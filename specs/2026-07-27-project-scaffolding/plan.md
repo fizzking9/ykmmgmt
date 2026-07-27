@@ -17,17 +17,18 @@ Numbered task groups in implementation order. Each group is independently verifi
 ## Group 2 — Frontend skeleton
 
 1. Scaffold React + TypeScript + Vite project in `ykmmgmt/frontend/` via `npm create vite@latest`
-2. Install dependencies: React Router v6, TanStack Query, Tailwind CSS, shadcn/ui
+2. Install dependencies: React Router v6, TanStack Query, Tailwind CSS, shadcn/ui, Vitest, @testing-library/react, @testing-library/jest-dom, jsdom
 3. Initialize shadcn/ui (creates `components.json`, `src/lib/utils.ts`)
-4. Configure Tailwind CSS with shadcn/ui preset
+4. Configure Tailwind CSS with shadcn/ui preset and responsive breakpoints
 5. Create a single-page app that calls `GET /api/health` and displays the response
-6. Use TanStack Query for the API call with loading/error/success states
-7. Apply minimal shadcn/ui styling (Card component wrapping the health status)
+6. Use responsive layout: full-width on mobile, constrained card on desktop
+7. Use TanStack Query for the API call with loading/error/success states
+8. Apply minimal shadcn/ui styling (Card component wrapping the health status)
 
 ## Group 3 — Dev tooling & integration
 
 1. Configure Vite proxy: `vite.config.ts` routes `/api/*` → `http://localhost:8000`
-2. Add `package.json` scripts: `dev`, `build`, `lint`, `format`
+2. Add `package.json` scripts: `dev`, `build`, `lint`, `format`, `test`, `test:watch`
 3. Set up ESLint with TypeScript and React plugins
 4. Set up Prettier with consistent config
 5. Set up Ruff for backend linting (`pyproject.toml` or `ruff.toml`)
@@ -46,3 +47,4 @@ Numbered task groups in implementation order. Each group is independently verifi
 5. Verify: `curl http://localhost:5173/api/health` also returns `{"status":"ok"}` (proxy works)
 6. Run `ruff check .` in backend — zero errors
 7. Run `npm run lint` in frontend — zero errors
+8. Run `npm run test` in frontend — all tests pass, zero failures

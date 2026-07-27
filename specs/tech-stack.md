@@ -20,11 +20,12 @@
 | **Language** | TypeScript | Type safety, better tooling, scales well |
 | **Framework** | React 18+ | Largest ecosystem, strong component model, team familiarity |
 | **Build tool** | Vite | Fast dev server, quick HMR, modern defaults |
-| **UI components** | Ant Design or shadcn/ui | Rich table, form, and layout primitives for dashboards |
+| **UI components** | shadcn/ui | Modern, Tailwind-based, copy-paste components, smaller bundle than Ant Design |
 | **Charts** | Recharts | React-native charting, composable, good for metric cards & time series |
 | **Data fetching** | TanStack Query (React Query) | Caching, refetching, loading/error states for API calls |
 | **Routing** | React Router v6 | Standard SPA routing |
-| **Testing** | Vitest + React Testing Library | Vite-native, fast, component-level tests |
+| **Testing** | Vitest + React Testing Library | Vite-native, fast, component-level tests; serves as the formal validation gate for feature completion |
+| **Responsive design** | Tailwind CSS breakpoints | Mobile-first responsive utilities (`sm:`, `md:`, `lg:`, `xl:`) built into every component |
 
 ## Database
 

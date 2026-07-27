@@ -15,6 +15,8 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [x] Vite proxy config so the dev server routes `/api/*` to FastAPI
 - [x] `.gitignore`, `README.md` with quick-start instructions
 - [x] Linting: Ruff (backend), ESLint + Prettier (frontend)
+- [x] Testing: Vitest + React Testing Library configured, test scripts in package.json
+- [x] Responsive viewport meta tag, Tailwind CSS breakpoints active
 
 ---
 
@@ -69,9 +71,9 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ## Phase 5 — Dashboard UI: Shell & Metric Cards
 
-**Goal:** A real dashboard page with live data from the backend.
+**Goal:** A real, responsive dashboard page with live data from the backend.
 
-- [ ] App layout: sidebar nav + main content area (Ant Design or shadcn/ui)
+- [ ] App layout: responsive sidebar nav (collapsible on mobile) + main content area (shadcn/ui)
 - [ ] Dashboard page with a responsive grid of **metric cards**
   - Each card: title, current value, delta/trend indicator, sparkline
 - [ ] TanStack Query hooks for `/api/metrics/summary` and `/api/metrics`

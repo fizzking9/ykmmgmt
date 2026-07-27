@@ -20,7 +20,8 @@ YKMMgmt is an **internal business tool** for financial and operational data mana
 ## Constraints
 
 - Backend: Python 3.12+, FastAPI, Pydantic v2, Ruff for linting
-- Frontend: React 18+, TypeScript, Vite, shadcn/ui (Tailwind CSS), ESLint + Prettier
+- Frontend: React 18+, TypeScript, Vite, shadcn/ui (Tailwind CSS), ESLint + Prettier, Vitest + React Testing Library
+- Responsive design: viewport meta tag, Tailwind CSS mobile-first breakpoints (`sm:`, `md:`, `lg:`, `xl:`)
 - Vite dev server must proxy `/api/*` requests to the FastAPI dev server
 - No database yet — Phase 2 introduces PostgreSQL
 - No auth yet — Phase 10 introduces JWT auth

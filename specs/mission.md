@@ -9,6 +9,7 @@ YKMMgmt is an **internal business tool** for financial and operational data mana
 - **Unify business data** — pull metrics from spreadsheets, CSVs, third-party APIs, and databases into one consistent view.
 - **Automate the boring stuff** — replace manual copy-paste workflows with scheduled, automated data imports.
 - **Surface what matters** — present key performance indicators through interactive metric cards, charts, and filterable data tables.
+- **Responsive by default** — the UI adapts seamlessly to desktop, tablet, and mobile viewports so the team can check metrics from any device.
 - **Keep it internal** — designed for team use within the organization, with role-based access where needed.
 
 ## Problem It Solves
