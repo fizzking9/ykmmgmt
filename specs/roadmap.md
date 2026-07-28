@@ -26,13 +26,13 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 > ⚠️ **Dependency:** Sample data files have been placed in the project folder. The database schema MUST be designed by inspecting these files — column names, types, and relationships should reflect the actual data shape, not generic placeholders.
 
-- [ ] SQLAlchemy base + async engine setup
-- [ ] Alembic initialized, first migration
-- [ ] Inspect provided sample data files and derive the schema from them:
+- [x] SQLAlchemy base + async engine setup
+- [x] Alembic initialized, first migration
+- [x] Inspect provided sample data files and derive the schema from them:
   - `DataSource` — name, type (csv/excel), config JSON, schedule
   - `ImportJob` — source FK, status, started_at, finished_at, row count, errors
   - Business data tables — columns and types driven by the actual sample data structure
-- [ ] Seed script using the sample data files for development
+- [x] Seed script using the sample data files for development
 
 ---
 

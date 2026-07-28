@@ -1,9 +1,10 @@
 # Ruff configuration for YKMMgmt backend
 target-version = "py312"
+line-length = 120
 
 [lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4"]
-ignore = []
+ignore = ["B008"]
 
 [format]
 quote-style = "double"
