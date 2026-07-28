@@ -28,3 +28,7 @@ Thumbs.db
 
 # Build
 *.log
+
+# Sample data (not tracked)
+*.csv
+*.xlsx
