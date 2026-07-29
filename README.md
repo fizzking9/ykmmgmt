@@ -74,6 +74,24 @@ Open **http://localhost:5173** in a browser — you should see the backend healt
 - **Seed data:** `python seed.py` loads the first 20 rows from each sample CSV file.
 - **Environment:** Copy `.env.example` to `.env` and adjust `DATABASE_URL` as needed.
 
+## Import API
+
+Upload CSV or Excel (`.csv`, `.xlsx`) files to import data into the system.
+
+```bash
+# Import a CSV file (Chinese headers are auto-matched to database columns)
+curl -X POST http://localhost:8000/api/imports \
+  -F "file=@服务退款工单0601~0721.csv" \
+  -F "target_table=service_refund_work_orders"
+
+# List available target tables (supports Chinese or English names)
+curl http://localhost:8000/api/imports/tables
+```
+
+**Supported target tables:** 退费单 (`refund_orders`), 服务退款工单 (`service_refund_work_orders`), 钱包提现操作 (`wallet_withdrawals`).
+
+The response includes import status, row counts, a cleaning report (steps, warnings), and any errors.
+
 ## Project Structure
 
 ```

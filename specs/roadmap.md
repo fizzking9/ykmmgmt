@@ -42,23 +42,51 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 > Only two file formats are supported: **.csv** and **.xlsx**.
 
-- [ ] Unified import endpoint (`POST /api/imports`) — accepts both CSV and Excel files
-- [ ] **Data preparation (cleaning) pipeline** — must run BEFORE loading into DB:
-  - [ ] Strip whitespace, normalize column headers
-  - [ ] Handle missing values and blank rows/columns (drop or fill per configurable rules)
-  - [ ] Normalize inconsistent formats (dates, numbers, encodings)
-  - [ ] Deduplicate rows
-  - [ ] Validate values against expected ranges/types; flag or reject invalid rows
-  - [ ] Produce a cleaning report: rows dropped, rows modified, warnings per column
-- [ ] CSV parser using Pandas: validate headers against expected schema, infer types
-- [ ] Excel parser using openpyxl: read sheets, validate headers, infer types — same pipeline as CSV
-- [ ] Store cleaned/validated rows linked to an `ImportJob`
-- [ ] Return import job status + row count + cleaning report + validation errors
-- [ ] Error handling: malformed file, missing columns, empty files, unrecoverable rows
+- [x] Unified import endpoint (`POST /api/imports`) — accepts both CSV and Excel files
+- [x] **Data preparation (cleaning) pipeline** — must run BEFORE loading into DB:
+  - [x] Strip whitespace, normalize column headers
+  - [x] Handle missing values and blank rows/columns (drop or fill per configurable rules)
+  - [x] Normalize inconsistent formats (dates, numbers, encodings)
+  - [x] Deduplicate rows
+  - [x] Validate values against expected ranges/types; flag or reject invalid rows
+  - [x] Produce a cleaning report: rows dropped, rows modified, warnings per column
+- [x] CSV parser using Pandas: validate headers against expected schema, infer types
+- [x] Excel parser using openpyxl: read sheets, validate headers, infer types — same pipeline as CSV
+- [x] Store cleaned/validated rows linked to an `ImportJob`
+- [x] Return import job status + row count + cleaning report + validation errors
+- [x] Error handling: malformed file, missing columns, empty files, unrecoverable rows
 
 ---
 
-## Phase 4 — Dashboard API
+## Phase 3.5 — Upsert Support for Data Imports
+
+**Goal:** Re-uploading a file updates existing records instead of silently skipping them.
+
+> Currently `on_conflict_do_nothing()` is used — records with matching business keys are discarded. This phase switches to upsert semantics.
+
+- [ ] Replace `on_conflict_do_nothing()` with `on_conflict_do_update()` targeting business unique keys (e.g. `refund_order_no`)
+- [ ] On conflict, update all non-key, non-timestamp columns with values from the new row
+- [ ] Decide `imported_at` behavior: reset to current timestamp on update, or preserve original
+- [ ] Track upsert stats in import job report: `rows_inserted`, `rows_updated`, `rows_skipped`
+- [ ] Tests: verify existing record fields are updated, new records inserted, business keys unchanged
+
+---
+
+## Phase 4 — App Shell & CSV/Excel Upload UI
+
+**Goal:** A navigable app shell with upload capability so users can get real data into the system.
+
+- [ ] App layout: responsive sidebar nav (collapsible on mobile) + main content area (shadcn/ui)
+  - Sidebar links: Upload Data, Dashboard (placeholder), Import History
+- [ ] Upload page: drag-and-drop zone, file picker (accepts .csv and .xlsx), upload button
+- [ ] Upload progress indicator
+- [ ] Post-upload result: row count, cleaning report, errors (if any), link to view imported data
+- [ ] Import history page: table of past imports with status badges and source file type
+- [ ] TanStack Query hooks for `POST /api/imports` and `GET /api/imports`
+
+---
+
+## Phase 5 — Dashboard API
 
 **Goal:** The backend serves dashboard-ready data.
 
@@ -69,11 +97,10 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 5 — Dashboard UI: Shell & Metric Cards
+## Phase 6 — Dashboard UI: Metric Cards
 
-**Goal:** A real, responsive dashboard page with live data from the backend.
+**Goal:** Dashboard page with live metric cards from the backend, built on the existing app shell.
 
-- [ ] App layout: responsive sidebar nav (collapsible on mobile) + main content area (shadcn/ui)
 - [ ] Dashboard page with a responsive grid of **metric cards**
   - Each card: title, current value, delta/trend indicator, sparkline
 - [ ] TanStack Query hooks for `/api/metrics/summary` and `/api/metrics`
@@ -81,7 +108,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 6 — Dashboard UI: Charts & Tables
+## Phase 7 — Dashboard UI: Charts & Tables
 
 **Goal:** Rich interactive data exploration.
 
@@ -90,17 +117,6 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [ ] Filterable, sortable, paginated data table (all metric records)
 - [ ] Date range picker that drives all dashboard widgets
 - [ ] Source filter dropdown to toggle which data sources appear
-
----
-
-## Phase 7 — CSV & Excel Upload UI
-
-**Goal:** Users can upload CSV and Excel files from the browser.
-
-- [ ] Upload page: drag-and-drop zone, file picker (accepts .csv and .xlsx), upload button
-- [ ] Upload progress indicator
-- [ ] Post-upload result: row count, cleaning report, errors (if any), link to view imported data
-- [ ] Import history page: table of past imports with status badges and source file type
 
 ---
 

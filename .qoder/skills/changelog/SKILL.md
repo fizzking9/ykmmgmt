@@ -7,7 +7,7 @@ description: Maintain CHANGELOG.md at the project root from git history. Use whe
 
 ## When to Use
 
-Invoke this skill manually before merging a branch. It ensures CHANGELOG.md reflects all commits since the last update.
+Invoke this skill **after** committing changes and before merging a branch. The changelog is derived from actual git history — never write date headings before commits exist. It ensures CHANGELOG.md reflects all commits since the last update.
 
 ## Workflow
 
@@ -70,6 +70,7 @@ List what was added: the dates and number of entries per date.
 
 ## Format Rules
 
+- **Date headings MUST reflect the actual commit date** — use `git log --date=short` to derive them, never guess or hard-code
 - Dates in descending order (newest first)
 - Use `## YYYY-MM-DD` headings
 - One bullet (`-`) per commit, distilled to a single meaningful line
