@@ -4,6 +4,10 @@ All notable changes to YKMMgmt are documented in this file.
 
 ---
 
+## 2026-07-30
+
+- **Phase 3.5 — Upsert Support for Data Imports:** Replaced `on_conflict_do_nothing()` with `on_conflict_do_update()` targeting business unique keys (`refund_order_no`, `work_order_no`) for RefundOrder and ServiceRefundWorkOrder. On conflict, all non-key business columns are refreshed and `imported_at` resets to current timestamp. WalletWithdrawal (no natural key) uses SHA-256 `content_hash` column with unique constraint for insert-only dedup via `on_conflict_do_nothing(constraint=...)`. Added `rows_inserted`, `rows_updated`, `rows_skipped` to ImportJob model with Alembic migration. API response includes upsert stats; `rows_imported` remains backward-compatible (`inserted + updated`). 22 unit + 6 integration tests (including Excel import). Phase 3.5 specs (plan, requirements, validation) created with all 14 gates passed. README updated with upsert behavior table, response shape documentation, and Excel examples.
+
 ## 2026-07-29
 
 - **Phase 3 — CSV & Excel Import Engine:** Unified `POST /api/imports` endpoint accepting CSV and Excel files with Chinese header auto-mapping. Multi-step cleaning pipeline (whitespace strip, missing-value handling, dedup, format normalization, value validation) producing structured cleaning reports. Table-specific structural rules (extra-column merge, split-row fix) run before column mapping. Batch inserts (500 rows) with PostgreSQL savepoints for resilience. Schema validation gate rejects mismatched headers with 422. All 3 sample data files imported successfully (36K + 16K + 7.5K rows). 19 unit tests covering pipeline, parsers, validator. Ruff + format gate passed.
