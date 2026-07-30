@@ -77,7 +77,7 @@ def build_comment_mapping(model_class: type[DeclarativeBase]) -> dict[str, str]:
 
     for col in mapper.columns:
         comment = getattr(col, "comment", None)
-        if not comment or col.primary_key or col.name in ("imported_at", "created_at"):
+        if not comment or col.primary_key or col.name in ("imported_at", "created_at", "content_hash"):
             continue
         comment = comment.strip()
         if comment not in mapping:
@@ -167,7 +167,7 @@ def validate_headers(
     mapper = sa_inspect(model_class)
     for col in mapper.columns:
         comment = getattr(col, "comment", None)
-        if not comment or col.primary_key or col.name in ("imported_at", "created_at"):
+        if not comment or col.primary_key or col.name in ("imported_at", "created_at", "content_hash"):
             continue
         comment = comment.strip()
         if not col.nullable and col.default is None and col.server_default is None:

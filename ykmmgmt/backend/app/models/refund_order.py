@@ -8,6 +8,7 @@ from app.core.database import Base
 
 class RefundOrder(Base):
     __tablename__ = "refund_orders"
+    __upsert_key__ = ["refund_order_no"]
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="主键ID")
     refund_order_no: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, comment="退费单号")

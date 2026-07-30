@@ -8,6 +8,7 @@ from app.core.database import Base
 
 class ServiceRefundWorkOrder(Base):
     __tablename__ = "service_refund_work_orders"
+    __upsert_key__ = ["work_order_no"]
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="主键ID")
     work_order_no: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, comment="工单号")
