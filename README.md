@@ -78,19 +78,88 @@ Open **http://localhost:5173** in a browser — you should see the backend healt
 
 Upload CSV or Excel (`.csv`, `.xlsx`) files to import data into the system.
 
+### Quick Examples
+
+**Import a CSV file** (Chinese headers are auto-matched to database columns):
+
 ```bash
-# Import a CSV file (Chinese headers are auto-matched to database columns)
+# 服务退款工单 (Service Refund Work Orders)
 curl -X POST http://localhost:8000/api/imports \
   -F "file=@服务退款工单0601~0721.csv" \
   -F "target_table=service_refund_work_orders"
 
-# List available target tables (supports Chinese or English names)
+# 退费单 (Refund Orders)
+curl -X POST http://localhost:8000/api/imports \
+  -F "file=@退费单0601~0721.csv" \
+  -F "target_table=refund_orders"
+
+# 钱包提现操作 (Wallet Withdrawals)
+curl -X POST http://localhost:8000/api/imports \
+  -F "file=@钱包提现操作0601~0721.csv" \
+  -F "target_table=wallet_withdrawals"
+```
+
+**Import an Excel (.xlsx) file** — same endpoint, same behavior:
+
+```bash
+curl -X POST http://localhost:8000/api/imports \
+  -F "file=@data.xlsx" \
+  -F "target_table=service_refund_work_orders"
+```
+
+### Response Shape
+
+```json
+{
+  "status": "completed",
+  "target_table": "服务退款工单",
+  "rows_imported": 1450,
+  "rows_rejected": 0,
+  "rows_inserted": 0,
+  "rows_updated": 1450,
+  "rows_skipped": 0,
+  "import_job_id": 42,
+  "cleaning_report": {
+    "rows_before": 1450,
+    "rows_after": 1450,
+    "steps": [
+      { "step": "strip_whitespace", "rows_modified": 0, "rows_dropped": 0 },
+      { "step": "handle_missing_values", "rows_dropped": 0 },
+      { "step": "normalize_formats", "rows_modified": 0 },
+      { "step": "deduplicate_rows", "rows_dropped": 0 },
+      { "step": "validate_values", "rows_dropped": 0 },
+      { "step": "table_specific_cleaning", "rows_dropped": 0 }
+    ],
+    "warnings_per_column": {}
+  }
+}
+```
+
+- `rows_imported` = `rows_inserted` + `rows_updated` (backward-compatible total)
+- `rows_inserted` — new records created
+- `rows_updated` — existing records refreshed (upsert via business keys)
+- `rows_skipped` — duplicates silently ignored (hash-based dedup for WalletWithdrawal)
+- `rows_rejected` — rows that failed validation
+
+### Upsert Behavior
+
+Re-uploading the same file will **update** existing records instead of creating duplicates, based on business unique keys:
+
+| Table | Chinese Name | Conflict Key |
+|-------|-------------|-------------|
+| `refund_orders` | 退费单 | `refund_order_no` (退费单号) |
+| `service_refund_work_orders` | 服务退款工单 | `work_order_no` (工单号) |
+| `wallet_withdrawals` | 钱包提现操作 | `content_hash` (SHA-256 hash of all columns) |
+
+**WalletWithdrawal** has no natural business key, so duplicates are detected via a SHA-256 hash of all imported columns — identical rows are silently skipped.
+
+### List Available Tables
+
+```bash
 curl http://localhost:8000/api/imports/tables
 ```
 
-**Supported target tables:** 退费单 (`refund_orders`), 服务退款工单 (`service_refund_work_orders`), 钱包提现操作 (`wallet_withdrawals`).
-
-The response includes import status, row counts, a cleaning report (steps, warnings), and any errors.
+Returns English table names and their Chinese labels.
 
 ## Project Structure
 
@@ -119,10 +188,3 @@ ykmmgmt/
 ├── .env.example          # Environment template
 └── .gitignore
 ```
-
-# Management App for YKM
-
-## Input from stakeholders
-
-- The management team wants a light-weight system to use in their daily work, making it easier to decision making based on data.
-- This application is for Chinese users.

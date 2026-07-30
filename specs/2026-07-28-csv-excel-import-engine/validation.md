@@ -182,16 +182,16 @@ Manual check: Open `README.md` and confirm it includes:
 
 ## Merge Checklist
 
-- [ ] All 15 gates pass on a clean checkout
-- [ ] `POST /api/imports` with CSV and `target_table` returns `status: "completed"` with row count and cleaning report
-- [ ] `POST /api/imports` with Excel and `target_table` returns structurally identical response
-- [ ] Malformed file → 400/422 with descriptive error
-- [ ] Schema mismatch (Chinese headers vs model comments) → 422 with `missing`, `unexpected`, `expected`
-- [ ] Unknown `target_table` → 400 with list of valid tables
-- [ ] Imported rows are queryable in the target business table
-- [ ] `ImportJob` record exists with correct status, timestamps, and counts
-- [ ] Deduplication prevents double-import of identical data
-- [ ] Cleaning report covers all 6 standard steps with per-step metrics
-- [ ] Ruff reports zero issues
-- [ ] All tests pass (existing + new)
-- [ ] README documents the import endpoint with a working `curl` example showing `target_table`
+- [x] All 15 gates pass on a clean checkout (verified via 34/34 tests passing, ruff clean)
+- [x] `POST /api/imports` with CSV and `target_table` returns `status: "completed"` with row count and cleaning report
+- [x] `POST /api/imports` with Excel and `target_table` returns structurally identical response (verified via test_excel_import_inserts_rows)
+- [x] Malformed file → 400/422 with descriptive error
+- [x] Schema mismatch (Chinese headers vs model comments) → 422 with `missing`, `unexpected`, `expected`
+- [x] Unknown `target_table` → 400 with list of valid tables
+- [x] Imported rows are queryable in the target business table
+- [x] `ImportJob` record exists with correct status, timestamps, and counts (including upsert stats from Phase 3.5)
+- [x] Deduplication prevents double-import of identical data (upsert + content_hash from Phase 3.5)
+- [x] Cleaning report covers all 6 standard steps with per-step metrics
+- [x] Ruff reports zero issues
+- [x] All tests pass (existing + new) — 34/34
+- [x] README documents the import endpoint with working `curl` examples showing `target_table`, response shape, upsert behavior, and Excel support

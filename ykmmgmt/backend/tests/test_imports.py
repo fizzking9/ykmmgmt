@@ -1,9 +1,11 @@
 """Tests for the import endpoint and related services."""
 
 import pandas as pd
+import pytest
 
 # Import main to register models for schema validation tests
 import main  # noqa: F401
+from app.models import RefundOrder, ServiceRefundWorkOrder, WalletWithdrawal
 from app.services.cleaning import (
     CleaningPipeline,
     CleaningReport,
@@ -14,7 +16,7 @@ from app.services.cleaning import (
     strip_whitespace,
     validate_values,
 )
-from app.services.import_service import ImportError
+from app.services.import_service import ImportError, get_upsert_key
 from app.services.parsers import detect_encoding, parse_file
 from app.services.schema_validator import (
     get_registered_tables,
@@ -195,3 +197,237 @@ class TestImportError:
         exc = ImportError("error", status_code=422, details={"key": "val"})
         assert exc.status_code == 422
         assert exc.details == {"key": "val"}
+
+
+class TestUpsertKey:
+    """Tests for upsert key discovery."""
+
+    def test_refund_order_upsert_key(self):
+        key = get_upsert_key(RefundOrder)
+        assert key == ["refund_order_no"]
+
+    def test_service_refund_upsert_key(self):
+        key = get_upsert_key(ServiceRefundWorkOrder)
+        assert key == ["work_order_no"]
+
+    def test_wallet_withdrawal_no_upsert_key(self):
+        key = get_upsert_key(WalletWithdrawal)
+        assert key == []
+
+
+@pytest.mark.asyncio(loop_scope="class")
+class TestUpsertIntegration:
+    """Integration tests for upsert behavior — requires running database."""
+
+    async def test_upsert_inserts_new_rows(self):
+        """First upload inserts all rows, zero updated."""
+        import tempfile
+        import uuid
+        from pathlib import Path
+
+        from app.core.database import async_session_factory
+        from app.services.import_service import ImportService
+
+        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
+        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-001,100.00\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
+            f.write(csv_content)
+            tmp_path = Path(f.name)
+
+        try:
+            async with async_session_factory() as db:
+                service = ImportService(db)
+                result = await service.run_import(tmp_path, "refund_orders")
+                await db.commit()
+
+                assert result["rows_inserted"] >= 1
+                assert result["rows_updated"] == 0
+                assert result["rows_imported"] >= 1
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    async def test_upsert_updates_existing_rows(self):
+        """Re-upload updates existing rows, zero inserted."""
+        import tempfile
+        import uuid
+        from pathlib import Path
+
+        from app.core.database import async_session_factory
+        from app.services.import_service import ImportService
+
+        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
+        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-002,200.00\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
+            f.write(csv_content)
+            tmp_path = Path(f.name)
+
+        try:
+            async with async_session_factory() as db:
+                service = ImportService(db)
+                result1 = await service.run_import(tmp_path, "refund_orders")
+                assert result1["rows_inserted"] >= 1
+                assert result1["rows_updated"] == 0
+
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f2:
+                    f2.write(csv_content)
+                    tmp_path2 = Path(f2.name)
+                try:
+                    result2 = await service.run_import(tmp_path2, "refund_orders")
+                    await db.commit()
+
+                    assert result2["rows_inserted"] == 0
+                    assert result2["rows_updated"] >= 1
+                finally:
+                    tmp_path2.unlink(missing_ok=True)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    async def test_upsert_preserves_business_key(self):
+        """Business key value unchanged after update."""
+        import tempfile
+        import uuid
+        from pathlib import Path
+
+        from sqlalchemy import select as sa_select
+
+        from app.core.database import async_session_factory
+        from app.services.import_service import ImportService
+
+        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
+        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-003,300.00\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
+            f.write(csv_content)
+            tmp_path = Path(f.name)
+
+        try:
+            async with async_session_factory() as db:
+                service = ImportService(db)
+                await service.run_import(tmp_path, "refund_orders")
+
+                csv_updated = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-003-CHANGED,999.99\n"
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f2:
+                    f2.write(csv_updated)
+                    tmp_path2 = Path(f2.name)
+                try:
+                    await service.run_import(tmp_path2, "refund_orders")
+                    await db.commit()
+
+                    stmt = sa_select(RefundOrder).where(RefundOrder.refund_order_no == unique_id)
+                    result = await db.execute(stmt)
+                    record = result.scalar_one_or_none()
+                    assert record is not None
+                    assert record.refund_order_no == unique_id
+                    assert record.platform_order_no == "ORDER-003-CHANGED"
+                    assert float(record.refund_amount) == 999.99
+                finally:
+                    tmp_path2.unlink(missing_ok=True)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    async def test_wallet_withdrawal_hash_dedup(self):
+        """WalletWithdrawal uses content_hash — re-import same data is skipped."""
+        import tempfile
+        import uuid
+        from pathlib import Path
+
+        from app.core.database import async_session_factory
+        from app.services.import_service import ImportService
+
+        unique_sn = f"SN-{uuid.uuid4().hex[:8]}"
+        csv_content = (
+            f"账户ID,SN,操作类型,操作金额,操作时间\n"
+            f"ACC-HASH-001,{unique_sn},提现,99.99,2026-06-15 10:00:00\n"
+        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
+            f.write(csv_content)
+            tmp_path = Path(f.name)
+
+        try:
+            async with async_session_factory() as db:
+                service = ImportService(db)
+
+                # First import: all rows should be inserted
+                result1 = await service.run_import(tmp_path, "wallet_withdrawals")
+                assert result1["rows_inserted"] >= 1
+                assert result1["rows_updated"] == 0
+                assert result1["rows_skipped"] == 0
+
+                # Second import of the SAME data: all rows should be skipped
+                result2 = await service.run_import(tmp_path, "wallet_withdrawals")
+                await db.commit()
+
+                assert result2["rows_inserted"] == 0
+                assert result2["rows_updated"] == 0
+                assert result2["rows_skipped"] >= 1
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    async def test_upsert_stats_in_import_job(self):
+        """ImportJob records correct upsert breakdown."""
+        import tempfile
+        import uuid
+        from pathlib import Path
+
+        from sqlalchemy import select as sa_select
+
+        from app.core.database import async_session_factory
+        from app.models import ImportJob
+        from app.services.import_service import ImportService
+
+        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
+        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-004,400.00\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
+            f.write(csv_content)
+            tmp_path = Path(f.name)
+
+        try:
+            async with async_session_factory() as db:
+                service = ImportService(db)
+                result = await service.run_import(tmp_path, "refund_orders")
+                await db.commit()
+
+                stmt = sa_select(ImportJob).where(ImportJob.id == result["import_job_id"])
+                job_result = await db.execute(stmt)
+                job = job_result.scalar_one()
+                assert job.rows_inserted == result["rows_inserted"]
+                assert job.rows_updated == result["rows_updated"]
+                assert job.rows_skipped == result["rows_skipped"]
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    async def test_excel_import_inserts_rows(self):
+        """Excel (.xlsx) import works same as CSV."""
+        import tempfile
+        import uuid
+        from pathlib import Path
+
+        from app.core.database import async_session_factory
+        from app.services.import_service import ImportService
+
+        unique_id = f"TEST-XL-{uuid.uuid4().hex[:8]}"
+
+        # Create a .xlsx file with openpyxl
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["退费单号", "平台订单号", "退费金额"])
+        ws.append([unique_id, "ORDER-XL-001", "123.45"])
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            tmp_path = Path(f.name)
+        wb.save(str(tmp_path))
+
+        try:
+            async with async_session_factory() as db:
+                service = ImportService(db)
+                result = await service.run_import(tmp_path, "refund_orders")
+                await db.commit()
+
+                assert result["status"] == "completed"
+                assert result["rows_inserted"] >= 1
+                assert result["rows_updated"] == 0
+                assert result["rows_imported"] >= 1
+                assert "cleaning_report" in result
+        finally:
+            tmp_path.unlink(missing_ok=True)

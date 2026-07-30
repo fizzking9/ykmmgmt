@@ -64,11 +64,12 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 > Currently `on_conflict_do_nothing()` is used — records with matching business keys are discarded. This phase switches to upsert semantics.
 
-- [ ] Replace `on_conflict_do_nothing()` with `on_conflict_do_update()` targeting business unique keys (e.g. `refund_order_no`)
-- [ ] On conflict, update all non-key, non-timestamp columns with values from the new row
-- [ ] Decide `imported_at` behavior: reset to current timestamp on update, or preserve original
-- [ ] Track upsert stats in import job report: `rows_inserted`, `rows_updated`, `rows_skipped`
-- [ ] Tests: verify existing record fields are updated, new records inserted, business keys unchanged
+- [x] Replace `on_conflict_do_nothing()` with `on_conflict_do_update()` targeting business unique keys (e.g. `refund_order_no`)
+- [x] On conflict, update all non-key, non-timestamp columns with values from the new row
+- [x] Decide `imported_at` behavior: reset to current timestamp on update
+- [x] Track upsert stats in import job report: `rows_inserted`, `rows_updated`, `rows_skipped`
+- [x] Tests: verify existing record fields are updated, new records inserted, business keys unchanged
+- [x] WalletWithdrawal dedup via `content_hash` (SHA-256 of all business columns) — table without natural unique key
 
 ---
 
