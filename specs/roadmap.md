@@ -77,13 +77,13 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 **Goal:** A navigable app shell with upload capability so users can get real data into the system.
 
-- [ ] App layout: responsive sidebar nav (collapsible on mobile) + main content area (shadcn/ui)
+- [x] App layout: responsive sidebar nav (collapsible on mobile) + main content area (shadcn/ui)
   - Sidebar links: Upload Data, Dashboard (placeholder), Import History
-- [ ] Upload page: drag-and-drop zone, file picker (accepts .csv and .xlsx), upload button
-- [ ] Upload progress indicator
-- [ ] Post-upload result: row count, cleaning report, errors (if any), link to view imported data
-- [ ] Import history page: table of past imports with status badges and source file type
-- [ ] TanStack Query hooks for `POST /api/imports` and `GET /api/imports`
+- [x] Upload page: drag-and-drop zone, file picker (accepts .csv and .xlsx), upload button
+- [x] Upload progress indicator
+- [x] Post-upload result: row count, cleaning report, errors (if any), link to view imported data
+- [x] Import history page: table of past imports with status badges and source file type
+- [x] TanStack Query hooks for `POST /api/imports` and `GET /api/imports`
 
 ---
 

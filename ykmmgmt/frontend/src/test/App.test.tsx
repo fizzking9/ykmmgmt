@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { UploadProvider } from "@/contexts/UploadContext";
 import App from "@/App";
 
 function createQueryClient() {
@@ -14,86 +16,50 @@ function createQueryClient() {
   });
 }
 
-function renderWithClient(ui: React.ReactElement) {
+function renderWithRouter(initialRoute = "/") {
   const queryClient = createQueryClient();
-  const { rerender, ...result } = render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialRoute]}>
+        <UploadProvider>
+          <App />
+        </UploadProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
-  return {
-    ...result,
-    rerender: (ui: React.ReactElement) =>
-      rerender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
-  };
 }
 
-describe("App — health check page", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn());
+describe("App Shell — layout and routing", () => {
+  it("renders the app title in the sidebar", () => {
+    renderWithRouter("/");
+    expect(screen.getByText("云客猫管理平台")).toBeInTheDocument();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  it("renders sidebar navigation groups", () => {
+    renderWithRouter("/");
+    expect(screen.getByText("数据管理")).toBeInTheDocument();
+    expect(screen.getByText("数据可视化")).toBeInTheDocument();
   });
 
-  it("renders the YKMMgmt heading and phase subtitle", () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () => Promise.resolve({ status: "ok" }),
-    } as Response);
-
-    renderWithClient(<App />);
-
-    expect(screen.getByText("YKMMgmt")).toBeInTheDocument();
-    expect(screen.getByText("Project Scaffolding — Phase 1")).toBeInTheDocument();
+  it("renders the home page at /", () => {
+    const { container } = renderWithRouter("/");
+    // Home page renders an empty div — the main content area should exist
+    expect(container.querySelector("main")).toBeInTheDocument();
   });
 
-  it("shows loading skeleton while fetching", () => {
-    vi.mocked(fetch).mockReturnValue(
-      new Promise(() => {
-        /* never resolves */
-      }) as Promise<Response>,
-    );
-
-    renderWithClient(<App />);
-
-    const skeletons = document.querySelectorAll(".animate-pulse");
-    expect(skeletons.length).toBeGreaterThan(0);
+  it("renders the upload page at /upload", () => {
+    renderWithRouter("/upload");
+    expect(screen.getByText("上传数据")).toBeInTheDocument();
   });
 
-  it("displays 'Backend Online' on successful health response", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () => Promise.resolve({ status: "ok" }),
-    } as Response);
-
-    renderWithClient(<App />);
-
-    expect(await screen.findByText("Backend Online")).toBeInTheDocument();
-    expect(screen.getByText(/"status": "ok"/)).toBeInTheDocument();
+  it("renders the import history page at /imports", () => {
+    renderWithRouter("/imports");
+    expect(screen.getByText("导入历史")).toBeInTheDocument();
   });
 
-  it("displays error state when the backend is unreachable", async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new Error("Connection refused"));
-
-    renderWithClient(<App />);
-
-    expect(await screen.findByText(/Failed to reach backend/)).toBeInTheDocument();
-    expect(screen.getByText(/Connection refused/)).toBeInTheDocument();
-  });
-
-  it("displays 'Unknown error' when fetch rejects without a message", async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(null);
-
-    renderWithClient(<App />);
-
-    expect(await screen.findByText(/Unknown error/)).toBeInTheDocument();
-  });
-
-  it("shows the health status code block on success", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      json: () => Promise.resolve({ status: "degraded" }),
-    } as Response);
-
-    renderWithClient(<App />);
-
-    expect(await screen.findByText(/"status": "degraded"/)).toBeInTheDocument();
+  it("renders the dashboard placeholder at /dashboard", () => {
+    renderWithRouter("/dashboard");
+    expect(screen.getByText("仪表盘")).toBeInTheDocument();
+    expect(screen.getByText("即将上线")).toBeInTheDocument();
   });
 });
