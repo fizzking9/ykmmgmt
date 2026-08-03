@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { UploadProvider } from "@/contexts/UploadContext";
@@ -38,7 +38,6 @@ describe("App Shell — layout and routing", () => {
   it("renders sidebar navigation groups", () => {
     renderWithRouter("/");
     expect(screen.getByText("数据管理")).toBeInTheDocument();
-    expect(screen.getByText("数据可视化")).toBeInTheDocument();
   });
 
   it("renders the home page at /", () => {
@@ -57,9 +56,12 @@ describe("App Shell — layout and routing", () => {
     expect(screen.getByText("导入历史")).toBeInTheDocument();
   });
 
-  it("renders the dashboard placeholder at /dashboard", () => {
-    renderWithRouter("/dashboard");
-    expect(screen.getByText("仪表盘")).toBeInTheDocument();
-    expect(screen.getByText("即将上线")).toBeInTheDocument();
+  it("renders the data browser nav item in sidebar", () => {
+    const { container } = renderWithRouter("/");
+    // Expand the collapsible sidebar group to reveal links
+    const trigger = screen.getByText("数据管理");
+    fireEvent.click(trigger);
+    expect(screen.getByText("数据浏览")).toBeInTheDocument();
+    expect(container.querySelector("main")).toBeInTheDocument();
   });
 });
