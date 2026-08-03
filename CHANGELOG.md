@@ -4,6 +4,12 @@ All notable changes to YKMMgmt are documented in this file.
 
 ---
 
+## 2026-08-03
+
+- **Roadmap reorganization:** Replaced the original Phases 5-7 (Dashboard API, Metric Cards, Charts & Tables) with a more powerful six-phase data exploration and visualization system. The new plan introduces a Data View Builder where users can create custom views of their data using joins, filters, grouping, and aggregation — with both the visual configuration and the generated SQL stored for transparency. On top of views, users can build and save visualizations across six chart types (Table, KPI Card, Bar, Line, Pie, Scatter), then compose them into flexible grid-based dashboards with drag-and-drop tile positioning. Each saved dashboard appears as its own sidebar navigation item under a collapsible Dashboards section. Phase 4.5 (Data Browser) was also added to provide raw table browsing with pagination and date filtering before the visualization features begin. The original Phases 8-10 (Data Scraping, Auth, Deploy) retain their content and are renumbered to 11-13.
+
+---
+
 ## 2026-07-30
 
 - **Phase 4 — Application Interface & Data Upload:** A full web application interface replaces the previous single-page health display. The app now features a responsive sidebar navigation that adapts to desktop and mobile screens, with organized groups for Data Management (数据管理) and Data Visualization (数据可视化). The centerpiece is a complete data upload page where users can drag and drop CSV or Excel files, select a target data table from a dropdown, and upload with a single click. During upload, the interface shows progress and prevents accidental double-submissions. After import completes, a detailed result card appears showing how many rows were created, updated, skipped, or had errors — with a direct link to view the full import history. The import history page displays all past uploads in a paginated table with color-coded status badges (green for success, red for failure, yellow for in-progress) and columns for file name, target table, row counts, and timestamps. Behind the scenes, three critical reliability fixes were applied: import jobs are now visible in history immediately (no longer hidden until completion), the upload state persists even when navigating between pages, and a numeric comparison bug that falsely reported 2,085 rows as "updated" on identical re-uploads has been resolved. All 16 validation gates passed, including 28 backend tests and 10 frontend tests with zero formatting or linting issues.

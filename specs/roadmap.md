@@ -87,41 +87,116 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 5 — Dashboard API
+## Phase 4.5 — Data Browser
 
-**Goal:** The backend serves dashboard-ready data.
+**Goal:** Browse raw data in any database table with pagination and date filtering.
 
-- [ ] `GET /api/metrics` — paginated, filterable (by source, date range, dimension)
-- [ ] `GET /api/metrics/summary` — aggregate endpoint: totals, counts, latest values per metric
-- [ ] `GET /api/imports` — list recent import jobs with status
-- [ ] Auto-generated OpenAPI docs at `/docs` (Swagger) and `/redoc`
-
----
-
-## Phase 6 — Dashboard UI: Metric Cards
-
-**Goal:** Dashboard page with live metric cards from the backend, built on the existing app shell.
-
-- [ ] Dashboard page with a responsive grid of **metric cards**
-  - Each card: title, current value, delta/trend indicator, sparkline
-- [ ] TanStack Query hooks for `/api/metrics/summary` and `/api/metrics`
-- [ ] Loading skeletons and error states per card
+- [ ] Backend: `GET /api/tables` — list all tables in the database
+- [ ] Backend: `GET /api/tables/{name}/schema` — return column names and types for a table
+- [ ] Backend: `GET /api/tables/{name}/data` — paginated rows (`?page=&size=`), optional `?datetime_col=&start=&end=` filter
+- [ ] Frontend: Table selector dropdown populated from `/api/tables`
+- [ ] Frontend: Paginated data grid — fixed rows per page, Previous/Next buttons, page number input
+- [ ] Frontend: DateTime range filter — if the selected table has datetime columns, show a column picker + date range inputs to filter data
+- [ ] Sidebar: Add "Data Browser" nav item
 
 ---
 
-## Phase 7 — Dashboard UI: Charts & Tables
+## Phase 5 — Data View Builder
 
-**Goal:** Rich interactive data exploration.
+**Goal:** Build comprehensive data views (joins, columns, filters, grouping, aggregation) and store both the JSON config and the generated SQL.
 
-- [ ] Time-series line/area chart (e.g., metric value over time, filterable by source)
-- [ ] Bar chart for dimension breakdowns (e.g., by category, by source)
-- [ ] Filterable, sortable, paginated data table (all metric records)
-- [ ] Date range picker that drives all dashboard widgets
-- [ ] Source filter dropdown to toggle which data sources appear
+- [ ] Backend: View definition model — `name`, `description`, `config_json` (join specs, column selections, filters, groupings, aggregations), `generated_sql` (the compiled SQL), `created_at`, `updated_at`
+- [ ] Backend: SQL generation engine — translate JSON config into valid parameterized SQL from the table schema
+- [ ] Backend: `POST /api/views` — create a view (accept config, generate SQL, store both)
+- [ ] Backend: `PUT /api/views/{id}` — update a view definition
+- [ ] Frontend: Table selector — pick source table(s) for the view
+- [ ] Frontend: Join builder — select join type (INNER/LEFT/RIGHT), join key columns between selected tables
+- [ ] Frontend: Column picker — select which columns to include in the result
+- [ ] Frontend: Filter builder — add WHERE conditions with column, operator, and value
+- [ ] Frontend: Grouping & aggregation — select GROUP BY columns and aggregation functions (SUM, COUNT, AVG, MIN, MAX) on numeric columns
+- [ ] Frontend: Live preview — run the generated SQL against a small sample and show the result
 
 ---
 
-## Phase 8 — Platform Data Scraping
+## Phase 6 — Saved Data Views Management
+
+**Goal:** List, preview, edit, and delete saved views.
+
+- [ ] Backend: `GET /api/views` — list all saved views with metadata
+- [ ] Backend: `GET /api/views/{id}` — full view definition + generated SQL
+- [ ] Backend: `GET /api/views/{id}/data` — execute the stored SQL and return results (paginated)
+- [ ] Backend: `DELETE /api/views/{id}` — delete a view
+- [ ] Frontend: Views list page — table of saved views with name, description, created date
+- [ ] Frontend: Preview dialog — execute the view's SQL and display results in a paginated table
+- [ ] Frontend: Edit button — navigate to Phase 5 builder pre-filled with the view's config
+- [ ] Frontend: Delete button with confirmation
+- [ ] Sidebar: Add "Data Views" nav item
+
+---
+
+## Phase 7 — Visualization Builder
+
+**Goal:** Build and save visualizations by selecting a data view, a chart type, and configuring it.
+
+- [ ] Backend: Visualization model — `name`, `view_id` (FK), `chart_type` (table/kpi_card/bar/line/pie/scatter), `config_json` (axis mappings, colors, labels, etc.), `created_at`, `updated_at`
+- [ ] Backend: `POST /api/visualizations` — create a visualization
+- [ ] Backend: `PUT /api/visualizations/{id}` — update a visualization
+- [ ] Frontend: View selector — pick from saved views (Phase 6) to use as data source
+- [ ] Frontend: Chart type selector — Table, KPI Card, Bar Chart, Line Chart, Pie Chart, Scatter Plot
+- [ ] Frontend: Configuration panel — per chart type:
+  - **Table:** column visibility toggles, sort column
+  - **KPI Card:** value column, label, optional comparison/target
+  - **Bar / Line / Pie / Scatter:** X-axis column, Y-axis column(s), color/group-by column
+- [ ] Frontend: Live preview — render the visualization with sample data from the selected view
+
+---
+
+## Phase 8 — Saved Visualizations Management
+
+**Goal:** List, view, edit, and delete saved visualizations.
+
+- [ ] Backend: `GET /api/visualizations` — list all saved visualizations with metadata
+- [ ] Backend: `GET /api/visualizations/{id}` — full visualization definition + rendered data
+- [ ] Backend: `DELETE /api/visualizations/{id}` — delete a visualization
+- [ ] Frontend: Visualizations list page — table of saved visualizations with name, chart type, source view, created date
+- [ ] Frontend: View button — render the visualization full-size with live data
+- [ ] Frontend: Edit button — navigate to Phase 7 builder pre-filled
+- [ ] Frontend: Delete button with confirmation
+- [ ] Sidebar: Add "Visualizations" nav item
+
+---
+
+## Phase 9 — Dashboard Builder
+
+**Goal:** Compose dashboards from saved visualizations with flexible grid positioning.
+
+- [ ] Backend: Dashboard model — `name`, `description`, `layout_json` (array of `{visualization_id, x, y, width, height}` grid positions), `created_at`, `updated_at`
+- [ ] Backend: `POST /api/dashboards` — create a dashboard
+- [ ] Backend: `PUT /api/dashboards/{id}` — update dashboard layout
+- [ ] Frontend: Dashboard builder page — grid canvas to place visualization tiles
+- [ ] Frontend: "Add Visualization" panel — pick from saved visualizations (Phase 8), drag onto grid
+- [ ] Frontend: Tile resize and reposition — each visualization tile is draggable and resizable on the grid
+- [ ] Frontend: Remove tile, adjust tile dimensions
+- [ ] Frontend: Save dashboard — persist layout to backend
+
+---
+
+## Phase 10 — Dashboard Navigation & Display
+
+**Goal:** Saved dashboards appear as sidebar navigation items under a parent "Dashboards" section. Users can view, edit, and delete dashboards.
+
+- [ ] Backend: `GET /api/dashboards` — list all dashboards
+- [ ] Backend: `GET /api/dashboards/{id}` — full dashboard config with visualization data for rendering
+- [ ] Backend: `DELETE /api/dashboards/{id}` — delete a dashboard
+- [ ] Frontend: Sidebar — add collapsible "Dashboards" parent section; each saved dashboard is a child nav item using the dashboard's name
+- [ ] Frontend: Dashboard display page — render the grid layout with all visualization tiles fetching live data
+- [ ] Frontend: Edit button on dashboard page — opens Phase 9 builder
+- [ ] Frontend: Delete button with confirmation on dashboard page
+- [ ] Frontend: Dashboard list/manage page accessible from parent "Dashboards" item (create, rename, delete)
+
+---
+
+## Phase 11 — Platform Data Scraping
 
 **Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
 
@@ -136,7 +211,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 9 — Auth & Multi-User
+## Phase 12 — Auth & Multi-User
 
 **Goal:** Only authorized team members can access the dashboard.
 
@@ -147,7 +222,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 10 — Polish & Deploy
+## Phase 13 — Polish & Deploy
 
 **Goal:** Production-ready.
 
