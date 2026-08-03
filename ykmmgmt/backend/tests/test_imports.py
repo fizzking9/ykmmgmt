@@ -228,7 +228,7 @@ class TestUpsertIntegration:
         from app.core.database import async_session_factory
         from app.services.import_service import ImportService
 
-        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
+        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
         csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-001,100.00\n"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
             f.write(csv_content)
@@ -242,12 +242,12 @@ class TestUpsertIntegration:
 
                 assert result["rows_inserted"] >= 1
                 assert result["rows_updated"] == 0
-                assert result["rows_imported"] >= 1
+                assert result["total_rows"] >= 1
         finally:
             tmp_path.unlink(missing_ok=True)
 
     async def test_upsert_updates_existing_rows(self):
-        """Re-upload updates existing rows, zero inserted."""
+        """Re-upload with changed values updates existing rows, zero inserted."""
         import tempfile
         import uuid
         from pathlib import Path
@@ -255,7 +255,7 @@ class TestUpsertIntegration:
         from app.core.database import async_session_factory
         from app.services.import_service import ImportService
 
-        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
+        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
         csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-002,200.00\n"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
             f.write(csv_content)
@@ -268,8 +268,10 @@ class TestUpsertIntegration:
                 assert result1["rows_inserted"] >= 1
                 assert result1["rows_updated"] == 0
 
+                # Second upload with CHANGED values — should count as update
+                csv_changed = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-002-CHANGED,999.99\n"
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f2:
-                    f2.write(csv_content)
+                    f2.write(csv_changed)
                     tmp_path2 = Path(f2.name)
                 try:
                     result2 = await service.run_import(tmp_path2, "refund_orders")
@@ -293,7 +295,7 @@ class TestUpsertIntegration:
         from app.core.database import async_session_factory
         from app.services.import_service import ImportService
 
-        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
+        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
         csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-003,300.00\n"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
             f.write(csv_content)
@@ -404,7 +406,7 @@ class TestUpsertIntegration:
         from app.core.database import async_session_factory
         from app.services.import_service import ImportService
 
-        unique_id = f"TEST-XL-{uuid.uuid4().hex[:8]}"
+        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
 
         # Create a .xlsx file with openpyxl
         import openpyxl
@@ -427,7 +429,7 @@ class TestUpsertIntegration:
                 assert result["status"] == "completed"
                 assert result["rows_inserted"] >= 1
                 assert result["rows_updated"] == 0
-                assert result["rows_imported"] >= 1
+                assert result["total_rows"] >= 1
                 assert "cleaning_report" in result
         finally:
             tmp_path.unlink(missing_ok=True)

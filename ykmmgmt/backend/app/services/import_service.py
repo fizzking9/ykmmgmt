@@ -3,6 +3,7 @@
 import datetime
 import hashlib
 import json
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,43 @@ def _compute_content_hash(row_data: dict[str, Any], business_cols: list[str]) ->
     return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
 
 
+def _values_equal(a: Any, b: Any) -> bool:
+    """Compare two values, handling type mismatches (float vs Decimal, etc.).
+
+    PostgreSQL NUMERIC columns are returned as Decimal by SQLAlchemy,
+    but _coerce_value produces float.  Direct != comparison can return
+    True even when values are numerically identical.
+    """
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    # Normalize empty string to None
+    if a == "" or b == "":
+        return (a or None) == (b or None)
+    # If both are numeric types, compare via Decimal for precision
+    if isinstance(a, (int, float, Decimal)) and isinstance(b, (int, float, Decimal)):
+        try:
+            return Decimal(str(a)) == Decimal(str(b))
+        except (InvalidOperation, ValueError):
+            return False
+    return a == b
+
+
+def _row_has_changes(row_data: dict[str, Any], existing_row: Any, update_cols: list[str]) -> bool:
+    """Check if any updatable column value differs between incoming and existing row.
+
+    Returns True if at least one update column has a different value,
+    meaning this row counts as a genuine "update".
+    """
+    for col in update_cols:
+        new_val = row_data.get(col)
+        old_val = getattr(existing_row, col, None)
+        if not _values_equal(new_val, old_val):
+            return True
+    return False
+
+
 class ImportError(Exception):
     """Import-related error with structured details."""
 
@@ -81,6 +119,7 @@ class ImportService:
         self,
         filepath: Path,
         target_table: str,
+        original_filename: str = "",
     ) -> dict[str, Any]:
         """Run a complete import job.
 
@@ -104,6 +143,38 @@ class ImportService:
 
         chinese_name = get_chinese_table_name(english_name)
 
+        # Create DataSource and ImportJob IMMEDIATELY (before any processing)
+        # and commit so the job appears in history as "running" right away.
+        display_filename = original_filename or filepath.name
+        source = await self._get_or_create_source(english_name, filepath, display_filename)
+        job = await self._create_import_job(source.id)
+        job.status = "running"
+        job.started_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+        await self.db.flush()
+        await self.db.commit()
+
+        try:
+            result = await self._process_import(filepath, target_table, english_name, model_class, chinese_name, job, display_filename)
+            await self.db.commit()
+            return result
+        except ImportError:
+            await self._fail_job(job)
+            raise
+        except Exception:
+            await self._fail_job(job)
+            raise
+
+    async def _process_import(
+        self,
+        filepath: Path,
+        target_table: str,
+        english_name: str,
+        model_class: Any,
+        chinese_name: str,
+        job: ImportJob,
+        display_filename: str,
+    ) -> dict[str, Any]:
+        """Run the actual import processing after job creation has been committed."""
         # Step 1: Parse file
         try:
             df, raw_headers = parse_file(filepath)
@@ -113,19 +184,16 @@ class ImportService:
             raise ImportError(message=f"文件解析失败: {e}", status_code=400) from e
 
         if df.empty:
-            # Create DataSource and ImportJob even for empty files
-            source = await self._get_or_create_source(english_name, filepath)
-            job = await self._create_import_job(source.id)
             await self._finish_import_job(job, "completed", 0, 0, 0, 0, 0)
             return {
                 "import_job_id": job.id,
                 "target_table": chinese_name,
                 "status": "completed",
-                "rows_imported": 0,
-                "rows_rejected": 0,
+                "total_rows": 0,
                 "rows_inserted": 0,
                 "rows_updated": 0,
                 "rows_skipped": 0,
+                "rows_failed": 0,
                 "cleaning_report": {"steps": [], "warnings_per_column": {}, "rows_before": 0, "rows_after": 0},
                 "errors": [],
             }
@@ -144,13 +212,10 @@ class ImportService:
                         "expected": validation.expected,
                     },
                 )
-            # If no missing columns but unexpected → warn but proceed
-            # (extra columns in file are allowed)
 
         # Step 3: Run table-specific structural cleaning BEFORE column mapping
-        # (fixes extra trailing columns, split rows etc. on raw column structure)
         pre_pipeline = CleaningPipeline()
-        pre_pipeline.clear_common_steps()  # Only table-specific structural rules
+        pre_pipeline.clear_common_steps()
         for rule_fn in get_rules(english_name):
             pre_pipeline.add_table_step(rule_fn)
         df, pre_report = pre_pipeline.run(df)
@@ -162,31 +227,26 @@ class ImportService:
         pipeline = CleaningPipeline()
         df, cleaning_report = pipeline.run(df)
 
-        # Merge pre-pipeline report steps into the cleaning report
         pre_report.steps.extend(cleaning_report.steps)
         pre_report.rows_after = cleaning_report.rows_after
         cleaning_report = pre_report
 
-        # Step 6: Create DataSource and ImportJob
-        source = await self._get_or_create_source(english_name, filepath)
-        job = await self._create_import_job(source.id)
-
-        # Step 7: Insert/upsert cleaned rows
+        # Step 6: Insert/upsert cleaned rows
         rows_inserted = 0
         rows_updated = 0
         rows_skipped = 0
-        rows_rejected = 0
         errors: list[dict] = []
+
+        total_rows = cleaning_report.rows_after
 
         if not df.empty:
             rows_inserted, rows_updated, rows_skipped, errors = await self._insert_rows(model_class, df, job.id)
 
-        rows_imported_total = rows_inserted + rows_updated
         await self._finish_import_job(
             job,
             "completed",
-            rows_imported_total,
-            rows_rejected,
+            total_rows,
+            rows_skipped,
             rows_inserted,
             rows_updated,
             rows_skipped,
@@ -197,14 +257,23 @@ class ImportService:
             "import_job_id": job.id,
             "target_table": chinese_name,
             "status": "completed",
-            "rows_imported": rows_imported_total,
-            "rows_rejected": rows_rejected,
+            "total_rows": total_rows,
             "rows_inserted": rows_inserted,
             "rows_updated": rows_updated,
             "rows_skipped": rows_skipped,
+            "rows_failed": rows_skipped,
             "cleaning_report": cleaning_report.to_dict(),
             "errors": errors,
         }
+
+    async def _fail_job(self, job: ImportJob) -> None:
+        """Mark the import job as failed and commit."""
+        try:
+            job.status = "failed"
+            job.finished_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+            await self.db.commit()
+        except Exception:
+            pass
 
     def _apply_column_mapping(self, df: pd.DataFrame, mapping: dict[str, str], raw_headers: list[str]) -> pd.DataFrame:
         """Apply Chinese→English column name mapping to the DataFrame."""
@@ -232,7 +301,7 @@ class ImportService:
 
         return df
 
-    async def _get_or_create_source(self, table_name: str, filepath: Path) -> DataSource:
+    async def _get_or_create_source(self, table_name: str, filepath: Path, display_filename: str = "") -> DataSource:
         """Get or create a DataSource record for this import."""
         chinese_name = get_chinese_table_name(table_name)
         # For simplicity, create a new source for each import type
@@ -240,7 +309,7 @@ class ImportService:
             name=f"{chinese_name}导入",
             source_type=filepath.suffix.lstrip("."),
             config={
-                "file_path": str(filepath.name),
+                "file_path": display_filename or filepath.name,
                 "target_table": table_name,
             },
         )
@@ -273,6 +342,10 @@ class ImportService:
 
         Uses ON CONFLICT DO UPDATE for upsert semantics. Returns
         (rows_inserted, rows_updated, rows_skipped, errors).
+
+        Key distinction: a row is counted as "updated" ONLY if at least one
+        updatable column value actually differs from the existing DB row.
+        An upsert of identical data counts as a no-op (not in any count).
         """
         inserted = 0
         updated = 0
@@ -357,50 +430,64 @@ class ImportService:
             batch = clean_rows[batch_start : batch_start + batch_size]
 
             if use_upsert:
-                # Count existing keys in this batch
-                batch_existing = await self._count_existing_keys(model_class, upsert_key, batch)
+                # Fetch existing rows to determine insert vs update vs no-change
+                existing_map = await self._fetch_existing_rows(model_class, upsert_key, batch)
 
-                try:
-                    async with self.db.begin_nested():
-                        stmt = insert(model_class).values(batch)
-                        stmt = stmt.on_conflict_do_update(
-                            index_elements=upsert_key,
-                            set_={col: getattr(stmt.excluded, col) for col in update_cols}
-                            | {"imported_at": sa_func.now()},
-                        )
-                        await self.db.execute(stmt)
-                    inserted += len(batch) - batch_existing
-                    updated += batch_existing
-                except Exception:
-                    # Batch failed — fall back to individual rows for this batch
-                    for i, row_data in enumerate(batch):
-                        try:
-                            row_existing = await self._count_existing_keys(model_class, upsert_key, [row_data])
-                            async with self.db.begin_nested():
-                                stmt = insert(model_class).values(**row_data)
-                                stmt = stmt.on_conflict_do_update(
-                                    index_elements=upsert_key,
-                                    set_={col: getattr(stmt.excluded, col) for col in update_cols}
-                                    | {"imported_at": sa_func.now()},
-                                )
-                                await self.db.execute(stmt)
-                            if row_existing:
-                                updated += 1
-                            else:
-                                inserted += 1
-                        except Exception as row_exc:
-                            skipped += 1
-                            if len(job_errors) < 200:
-                                job_errors.append(
-                                    {
-                                        "row": batch_start + i + 1,
-                                        "error": str(row_exc)[:300],
-                                    }
-                                )
+                # Separate rows into new, changed, and unchanged
+                rows_to_upsert: list[dict] = []
+                for row_data in batch:
+                    key = self._make_lookup_key(row_data, upsert_key)
+                    if key is None:
+                        skipped += 1
+                        continue
+
+                    if key in existing_map:
+                        existing_row = existing_map[key]
+                        if _row_has_changes(row_data, existing_row, update_cols):
+                            updated += 1
+                            rows_to_upsert.append(row_data)
+                        else:
+                            # Identical data — no-op, don't count
+                            pass
+                    else:
+                        inserted += 1
+                        rows_to_upsert.append(row_data)
+
+                # Perform upsert for rows that actually need it
+                if rows_to_upsert:
+                    try:
+                        async with self.db.begin_nested():
+                            stmt = insert(model_class).values(rows_to_upsert)
+                            stmt = stmt.on_conflict_do_update(
+                                index_elements=upsert_key,
+                                set_={col: getattr(stmt.excluded, col) for col in update_cols}
+                                | {"imported_at": sa_func.now()},
+                            )
+                            await self.db.execute(stmt)
+                    except Exception:
+                        # Batch failed — fall back to individual rows
+                        for i, row_data in enumerate(rows_to_upsert):
+                            try:
+                                async with self.db.begin_nested():
+                                    stmt = insert(model_class).values(**row_data)
+                                    stmt = stmt.on_conflict_do_update(
+                                        index_elements=upsert_key,
+                                        set_={col: getattr(stmt.excluded, col) for col in update_cols}
+                                        | {"imported_at": sa_func.now()},
+                                    )
+                                    await self.db.execute(stmt)
+                            except Exception as row_exc:
+                                skipped += 1
+                                if len(job_errors) < 200:
+                                    job_errors.append(
+                                        {
+                                            "row": batch_start + i + 1,
+                                            "error": str(row_exc)[:300],
+                                        }
+                                    )
             else:
                 # No upsert key — insert-only mode
                 if has_content_hash:
-                    # Pre-count existing hashes so stats are accurate
                     batch_existing = await self._count_existing_hashes(model_class, batch)
                 else:
                     batch_existing = 0
@@ -470,6 +557,53 @@ class ImportService:
 
         result = await self.db.execute(stmt)
         return result.scalar() or 0
+
+    async def _fetch_existing_rows(
+        self,
+        model_class: Any,
+        key_cols: list[str],
+        batch: list[dict],
+    ) -> dict:
+        """Fetch existing DB rows matching the batch's upsert keys.
+
+        Returns a dict keyed by upsert-key value (single value or tuple).
+        """
+        if not batch or not key_cols:
+            return {}
+
+        if len(key_cols) == 1:
+            key_col = key_cols[0]
+            key_values = [row[key_col] for row in batch if row.get(key_col) is not None]
+            if not key_values:
+                return {}
+            stmt = select(model_class).where(getattr(model_class, key_col).in_(key_values))
+        else:
+            conditions = []
+            for row in batch:
+                if all(row.get(col) is not None for col in key_cols):
+                    conditions.append(and_(*[getattr(model_class, col) == row[col] for col in key_cols]))
+            if not conditions:
+                return {}
+            stmt = select(model_class).where(or_(*conditions))
+
+        result = await self.db.execute(stmt)
+        rows = result.scalars().all()
+
+        existing: dict = {}
+        for row in rows:
+            if len(key_cols) == 1:
+                key = getattr(row, key_cols[0])
+            else:
+                key = tuple(getattr(row, col) for col in key_cols)
+            existing[key] = row
+        return existing
+
+    @staticmethod
+    def _make_lookup_key(row_data: dict, key_cols: list[str]):
+        """Create a lookup key from row data for matching against existing rows."""
+        if len(key_cols) == 1:
+            return row_data.get(key_cols[0])
+        return tuple(row_data.get(col) for col in key_cols)
 
     async def _count_existing_hashes(
         self,

@@ -2,7 +2,7 @@
 
 Usage:
   python seed.py              Seed the database with sample data
-  python seed.py --cleanup    Drop all tables (teardown after phase validation)
+  python seed.py --cleanup    Truncate all data (preserves table schema)
 
 Requires: PostgreSQL running via docker compose, DATABASE_URL set in .env
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
-from app.core.database import Base, async_session_factory, engine
+from app.core.database import async_session_factory
 from app.models import (
     DataSource,
     RefundOrder,
@@ -250,10 +250,19 @@ async def sanity_check():
 
 
 async def cleanup():
-    """Drop all tables — teardown after phase validation is complete."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    print("All tables dropped — database cleared.")
+    """Truncate all data from all tables — preserves schema and resets sequences."""
+    from sqlalchemy import text
+
+    async with async_session_factory() as session:
+        await session.execute(
+            text(
+                "TRUNCATE TABLE import_jobs, datasources, "
+                "service_refund_work_orders, refund_orders, "
+                "wallet_withdrawals RESTART IDENTITY CASCADE"
+            )
+        )
+        await session.commit()
+    print("All tables truncated — data removed, schema preserved.")
 
 
 async def main():
