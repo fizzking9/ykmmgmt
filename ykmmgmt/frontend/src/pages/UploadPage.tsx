@@ -226,6 +226,10 @@ export default function UploadPage() {
                 <p className="font-medium text-yellow-600">{state.result.rows_skipped}</p>
               </div>
               <div>
+                <p className="text-sm text-muted-foreground">拒绝行数</p>
+                <p className="font-medium text-red-600">{state.result.rows_rejected}</p>
+              </div>
+              <div>
                 <p className="text-sm text-muted-foreground">清洗前/后行数</p>
                 <p className="font-medium">
                   {state.result.cleaning_report.rows_before} →{" "}

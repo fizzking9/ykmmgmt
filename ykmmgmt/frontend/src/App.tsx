@@ -5,6 +5,7 @@ import HomePage from "@/pages/HomePage";
 import UploadPage from "@/pages/UploadPage";
 import ImportHistoryPage from "@/pages/ImportHistoryPage";
 import DashboardPage from "@/pages/DashboardPage";
+import DataBrowserPage from "@/pages/DataBrowserPage";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/imports" element={<ImportHistoryPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/data-browser" element={<DataBrowserPage />} />
         </Route>
       </Routes>
     </>

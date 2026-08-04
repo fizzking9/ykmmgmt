@@ -13,9 +13,8 @@ Issues found in sample data:
 
 Fix strategy:
 - Extra columns: merge all trailing extras into the second-to-last column
-- Split rows: merge ALL consecutive overflow rows (short columns OR invalid
-  refund_order_no) into the preceding valid row
-- Validate: drop any remaining rows with invalid refund_order_no (edge cases)
+- Malformed rows: detect and drop (do NOT attempt merge — it corrupts
+  parent rows). Counted as rejected.
 """
 
 import re
@@ -41,29 +40,43 @@ def _has_invalid_ro(row) -> bool:
 
 
 @register("refund_orders")
-def validate_refund_order_no(df: pd.DataFrame, report: CleaningReport) -> tuple[pd.DataFrame, CleaningReport]:
-    """Drop rows whose refund_order_no (col 0) still fails the valid-prefix check.
+def drop_malformed_rows(df: pd.DataFrame, report: CleaningReport) -> tuple[pd.DataFrame, CleaningReport]:
+    """Detect and drop malformed/split rows caused by newlines in 备注.
 
-    Runs AFTER fix_split_rows as a safety net. Any surviving invalid rows
-    represent edge cases the merge logic could not handle. We drop them
-    rather than letting corrupt data into the database.
+    Split/overflow rows appear as:
+    - Rows with significantly fewer non-null columns (< 60% of expected)
+    - Rows with corrupted refund_order_no (col 0) values like field labels,
+      empty strings, or unexpected prefixes (WX).
+
+    These rows cannot be reliably merged — merging corrupts the parent
+    row's data (e.g. overwrites 退费金额 with garbage).  We simply detect
+    and drop them, counting them as rejected.
     """
+    if len(df) <= 1:
+        return df, report
+
     rows_before = len(df)
-    is_invalid = df.apply(_has_invalid_ro, axis=1)
-    drop_count = int(is_invalid.sum())
+    short_threshold = max(2, int(len(df.columns) * 0.6))
+
+    col_counts = df.apply(lambda row: row.notna().sum(), axis=1)
+    is_short = col_counts <= short_threshold
+    is_invalid_ro = df.apply(_has_invalid_ro, axis=1)
+    is_malformed = is_short | is_invalid_ro
+
+    drop_count = int(is_malformed.sum())
 
     if drop_count > 0:
-        df = df[~is_invalid]
+        df = df[~is_malformed]
         df = df.reset_index(drop=True)
 
     report.add_step(
         CleaningStepReport(
-            step_name="validate_refund_order_no",
+            step_name="drop_malformed_rows",
             rows_before=rows_before,
             rows_after=len(df),
             rows_dropped=drop_count,
             rows_modified=0,
-            warnings=[f"Dropped {drop_count} rows with invalid refund_order_no (unmergeable overflow)"] if drop_count > 0 else [],
+            warnings=[f"Dropped {drop_count} malformed/split rows"] if drop_count > 0 else [],
         )
     )
     return df, report
@@ -102,103 +115,6 @@ def fix_extra_trailing_column(df: pd.DataFrame, report: CleaningReport) -> tuple
             rows_dropped=0,
             rows_modified=modified,
             warnings=[f"Merged extra columns from comma-split 备注 ({modified} rows affected)"] if modified > 0 else [],
-        )
-    )
-    return df, report
-
-
-@register("refund_orders")
-def fix_split_rows(df: pd.DataFrame, report: CleaningReport) -> tuple[pd.DataFrame, CleaningReport]:
-    """Detect and merge rows split by newlines in the 备注 field.
-
-    Split/overflow rows appear as:
-    - Rows with significantly fewer non-null columns (< 60% of expected)
-    - Rows with corrupted refund_order_no (col 0) values like field labels,
-      empty strings, or unexpected prefixes (WX).
-
-    Algorithm: for each valid row, merge ALL consecutive overflow rows
-    into it. Overflow rows without a preceding valid row are merged together
-    (edge case — should not occur in practice).
-    """
-    if len(df) <= 1:
-        return df, report
-
-    rows_before = len(df)
-    short_threshold = max(2, int(len(df.columns) * 0.6))
-
-    # Mark rows as "overflow" based on column count OR invalid refund_order_no
-    col_counts = df.apply(lambda row: row.notna().sum(), axis=1)
-    is_short = col_counts <= short_threshold
-    is_invalid_ro = df.apply(_has_invalid_ro, axis=1)
-    is_overflow = is_short | is_invalid_ro
-
-    merged_count = 0
-    drop_indices: list[int] = []
-    i = 0
-
-    while i < len(df):
-        if not is_overflow.iloc[i]:
-            # Valid row — merge ALL following consecutive overflow rows into it
-            j = i + 1
-            while j < len(df) and is_overflow.iloc[j]:
-                j += 1
-            overflow_count = j - (i + 1)
-
-            if overflow_count > 0:
-                parent = df.iloc[i].copy()
-                for k in range(i + 1, j):
-                    ov_row = df.iloc[k]
-                    for col_idx in range(1, len(df.columns)):  # Skip col 0 (refund_order_no)
-                        pv = parent.iloc[col_idx]
-                        ov = ov_row.iloc[col_idx]
-                        if pd.isna(pv) or str(pv).strip() == "":
-                            if not pd.isna(ov) and str(ov).strip() != "":
-                                parent.iloc[col_idx] = ov
-                        elif not pd.isna(ov) and str(ov).strip() != "":
-                            parent.iloc[col_idx] = str(pv) + " " + str(ov)
-                    drop_indices.append(k)
-                df.iloc[i] = parent
-                merged_count += overflow_count
-                i = j
-            else:
-                i += 1
-        else:
-            # Overflow row without preceding valid row (edge case — rare)
-            # Merge consecutive overflows together
-            j = i + 1
-            while j < len(df) and is_overflow.iloc[j]:
-                j += 1
-            overflow_count = j - i
-
-            if overflow_count >= 2:
-                merged_row = df.iloc[i].copy()
-                for k in range(i + 1, j):
-                    next_row = df.iloc[k]
-                    for col_idx in range(len(df.columns)):
-                        mv = merged_row.iloc[col_idx]
-                        nv = next_row.iloc[col_idx]
-                        if pd.isna(mv) or str(mv).strip() == "":
-                            if not pd.isna(nv) and str(nv).strip() != "":
-                                merged_row.iloc[col_idx] = nv
-                        elif not pd.isna(nv) and str(nv).strip() != "":
-                            merged_row.iloc[col_idx] = str(mv) + " " + str(nv)
-                    drop_indices.append(k)
-                df.iloc[i] = merged_row
-                merged_count += overflow_count - 1
-            i = j
-
-    if drop_indices:
-        df = df.drop(df.index[drop_indices])
-        df = df.reset_index(drop=True)
-
-    report.add_step(
-        CleaningStepReport(
-            step_name="fix_split_rows",
-            rows_before=rows_before,
-            rows_after=len(df),
-            rows_dropped=len(drop_indices),
-            rows_modified=merged_count,
-            warnings=[f"Merged {merged_count} split/overflow rows from 备注 newlines"] if merged_count > 0 else [],
         )
     )
     return df, report

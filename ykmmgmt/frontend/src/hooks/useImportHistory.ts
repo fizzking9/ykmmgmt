@@ -8,7 +8,8 @@ export interface ImportJobItem {
   total_rows: number;
   rows_inserted: number;
   rows_updated: number;
-  rows_failed: number;
+  rows_skipped: number;
+  rows_rejected: number;
   created_at: string;
 }
 

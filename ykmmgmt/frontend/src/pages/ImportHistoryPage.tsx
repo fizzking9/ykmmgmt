@@ -58,7 +58,8 @@ function HistoryRow({ item }: { item: ImportJobItem }) {
       <TableCell>{item.target_table}</TableCell>
       <TableCell className="text-right text-green-600">{item.rows_inserted}</TableCell>
       <TableCell className="text-right text-blue-600">{item.rows_updated}</TableCell>
-      <TableCell className="text-right text-red-600">{item.rows_failed}</TableCell>
+      <TableCell className="text-right text-yellow-600">{item.rows_skipped}</TableCell>
+      <TableCell className="text-right text-red-600">{item.rows_rejected}</TableCell>
       <TableCell>
         <Button variant="ghost" size="sm" disabled>
           详情
@@ -71,7 +72,7 @@ function HistoryRow({ item }: { item: ImportJobItem }) {
 function LoadingSkeleton() {
   return Array.from({ length: 5 }).map((_, i) => (
     <TableRow key={i}>
-      {Array.from({ length: 9 }).map((_, j) => (
+      {Array.from({ length: 10 }).map((_, j) => (
         <TableCell key={j}>
           <Skeleton className="h-5 w-full" />
         </TableCell>
@@ -131,7 +132,8 @@ export default function ImportHistoryPage() {
                   <TableHead>目标数据表</TableHead>
                   <TableHead className="text-right">新增行数</TableHead>
                   <TableHead className="text-right">更新行数</TableHead>
-                  <TableHead className="text-right">失败行数</TableHead>
+                  <TableHead className="text-right">跳过行数</TableHead>
+                  <TableHead className="text-right">拒绝行数</TableHead>
                   <TableHead>操作</TableHead>
                 </TableRow>
               </TableHeader>
