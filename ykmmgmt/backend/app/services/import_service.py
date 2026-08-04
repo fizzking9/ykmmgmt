@@ -154,7 +154,10 @@ class ImportService:
         await self.db.commit()
 
         try:
-            result = await self._process_import(filepath, target_table, english_name, model_class, chinese_name, job, display_filename)
+            result = await self._process_import(
+                filepath, target_table, english_name, model_class,
+                chinese_name, job, display_filename,
+            )
             await self.db.commit()
             return result
         except ImportError:
@@ -193,10 +196,13 @@ class ImportService:
                 "rows_inserted": 0,
                 "rows_updated": 0,
                 "rows_skipped": 0,
-                "rows_failed": 0,
+                "rows_rejected": 0,
                 "cleaning_report": {"steps": [], "warnings_per_column": {}, "rows_before": 0, "rows_after": 0},
                 "errors": [],
             }
+
+        # Record original row count BEFORE any cleaning (for rejection tracking)
+        original_row_count = len(df)
 
         # Step 2: Schema validation gate
         validation = validate_headers(raw_headers, target_table)
@@ -235,18 +241,27 @@ class ImportService:
         rows_inserted = 0
         rows_updated = 0
         rows_skipped = 0
+        rows_rejected_insert = 0
         errors: list[dict] = []
 
-        total_rows = cleaning_report.rows_after
+        # Calculate rows dropped during cleaning
+        rows_dropped_cleaning = original_row_count - len(df)
 
         if not df.empty:
-            rows_inserted, rows_updated, rows_skipped, errors = await self._insert_rows(model_class, df, job.id)
+            rows_inserted, rows_updated, rows_skipped, rows_rejected_insert, errors = (
+                await self._insert_rows(model_class, df, job.id)
+            )
+
+        # Total rejected = rows dropped in cleaning + rows rejected during insert
+        total_rejected = rows_dropped_cleaning + rows_rejected_insert
+        # Total rows = original file row count (before any cleaning)
+        total_rows = original_row_count
 
         await self._finish_import_job(
             job,
             "completed",
             total_rows,
-            rows_skipped,
+            total_rejected,
             rows_inserted,
             rows_updated,
             rows_skipped,
@@ -261,7 +276,7 @@ class ImportService:
             "rows_inserted": rows_inserted,
             "rows_updated": rows_updated,
             "rows_skipped": rows_skipped,
-            "rows_failed": rows_skipped,
+            "rows_rejected": total_rejected,
             "cleaning_report": cleaning_report.to_dict(),
             "errors": errors,
         }
@@ -337,19 +352,21 @@ class ImportService:
         model_class: Any,
         df: pd.DataFrame,
         job_id: int,
-    ) -> tuple[int, int, int, list[dict]]:
+    ) -> tuple[int, int, int, int, list[dict]]:
         """Insert/upsert cleaned rows into the target table in batches.
 
         Uses ON CONFLICT DO UPDATE for upsert semantics. Returns
-        (rows_inserted, rows_updated, rows_skipped, errors).
+        (rows_inserted, rows_updated, rows_skipped, rows_rejected, errors).
 
-        Key distinction: a row is counted as "updated" ONLY if at least one
-        updatable column value actually differs from the existing DB row.
-        An upsert of identical data counts as a no-op (not in any count).
+        Skipped: rows that are valid but no DB change was needed (identical
+        data on upsert, duplicate content_hash for insert-only tables).
+        Rejected: rows that cannot be processed because they are invalid,
+        ambiguous, or violate a constraint.
         """
         inserted = 0
         updated = 0
-        skipped = 0
+        truly_skipped = 0
+        rejected = 0
         job_errors: list[dict] = []
 
         mapper = sa_inspect(model_class)
@@ -378,11 +395,11 @@ class ImportService:
         # Filter to only valid columns present in the DataFrame
         insert_cols = [c for c in df.columns if c in col_meta]
         if not insert_cols:
-            return 0, 0, 0, []
+            return 0, 0, 0, 0, []
 
         # Determine which columns to update on conflict
         # Exclude: primary key, upsert key columns, and timestamp columns
-        exclude_from_update = {"id"} | set(upsert_key) | {"imported_at", "record_created_at", "record_updated_at"}
+        exclude_from_update = {"id"} | set(upsert_key) | {"imported_at"}
         update_cols = [c.name for c in mapper.columns if c.name not in exclude_from_update]
 
         # Pre-validate all rows and build clean data list
@@ -410,7 +427,7 @@ class ImportService:
                 row_data[col] = val
 
             if skip:
-                skipped += 1
+                rejected += 1
                 continue
 
             # Compute content hash for hash-based dedup (insert-only tables)
@@ -419,7 +436,7 @@ class ImportService:
 
             # Skip rows with null business keys (only when upsert is active)
             if use_upsert and any(row_data.get(k) is None for k in upsert_key):
-                skipped += 1
+                rejected += 1
                 continue
 
             clean_rows.append(row_data)
@@ -438,7 +455,7 @@ class ImportService:
                 for row_data in batch:
                     key = self._make_lookup_key(row_data, upsert_key)
                     if key is None:
-                        skipped += 1
+                        rejected += 1
                         continue
 
                     if key in existing_map:
@@ -447,8 +464,7 @@ class ImportService:
                             updated += 1
                             rows_to_upsert.append(row_data)
                         else:
-                            # Identical data — no-op, don't count
-                            pass
+                            truly_skipped += 1
                     else:
                         inserted += 1
                         rows_to_upsert.append(row_data)
@@ -477,7 +493,7 @@ class ImportService:
                                     )
                                     await self.db.execute(stmt)
                             except Exception as row_exc:
-                                skipped += 1
+                                rejected += 1
                                 if len(job_errors) < 200:
                                     job_errors.append(
                                         {
@@ -503,7 +519,7 @@ class ImportService:
                             stmt = stmt.on_conflict_do_nothing()
                         await self.db.execute(stmt)
                     inserted += len(batch) - batch_existing
-                    skipped += batch_existing
+                    truly_skipped += batch_existing
                 except Exception:
                     # Batch failed — fall back to individual rows
                     for i, row_data in enumerate(batch):
@@ -519,7 +535,7 @@ class ImportService:
                                 await self.db.execute(stmt)
                             inserted += 1
                         except Exception as row_exc:
-                            skipped += 1
+                            rejected += 1
                             if len(job_errors) < 200:
                                 job_errors.append(
                                     {
@@ -528,7 +544,7 @@ class ImportService:
                                     }
                                 )
 
-        return inserted, updated, skipped, job_errors
+        return inserted, updated, truly_skipped, rejected, job_errors
 
     async def _count_existing_keys(
         self,

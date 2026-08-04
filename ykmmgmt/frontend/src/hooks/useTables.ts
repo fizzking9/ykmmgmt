@@ -6,10 +6,9 @@ export interface TableOption {
 }
 
 async function fetchTables(): Promise<TableOption[]> {
-  const res = await fetch("/api/imports/tables");
+  const res = await fetch("/api/tables");
   if (!res.ok) throw new Error("获取数据表列表失败");
-  const data = await res.json();
-  return data.tables;
+  return res.json();
 }
 
 export function useTables() {

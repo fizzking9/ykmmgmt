@@ -89,15 +89,17 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ## Phase 4.5 — Data Browser
 
-**Goal:** Browse raw data in any database table with pagination and date filtering.
+**Goal:** Browse raw data in any database table with pagination, column value filtering, sorting, and date filtering.
 
-- [ ] Backend: `GET /api/tables` — list all tables in the database
-- [ ] Backend: `GET /api/tables/{name}/schema` — return column names and types for a table
-- [ ] Backend: `GET /api/tables/{name}/data` — paginated rows (`?page=&size=`), optional `?datetime_col=&start=&end=` filter
-- [ ] Frontend: Table selector dropdown populated from `/api/tables`
-- [ ] Frontend: Paginated data grid — fixed rows per page, Previous/Next buttons, page number input
-- [ ] Frontend: DateTime range filter — if the selected table has datetime columns, show a column picker + date range inputs to filter data
-- [ ] Sidebar: Add "Data Browser" nav item
+- [x] Backend: `GET /api/tables` — list all tables in the database
+- [x] Backend: `GET /api/tables/{name}/schema` — return column names and types for a table
+- [x] Backend: `GET /api/tables/{name}/data` — paginated rows (`?page=&size=`), optional `?datetime_col=&start=&end=` date filter, `?filter_col=&filter_value=&filter_mode=` column value filter (positional repeated, supports 包含/精确 modes), `?sort_col=&sort_dir=` sort
+- [x] Frontend: Table selector (listbox) populated from `/api/tables`
+- [x] Frontend: Paginated data grid — 20 rows per page, Previous/Next buttons, page number input
+- [x] Frontend: DateTime range filter — column picker + date range inputs
+- [x] Frontend: Column value filter — multi-row filter UI (column dropdown + 包含/精确 toggle + value input), "添加筛选条件" button, AND-combined with date filter
+- [x] Frontend: Sortable column headers — click to cycle asc (▲) → desc (▼) → none, arrow indicators
+- [x] Sidebar: Add "Data Browser" nav item
 
 ---
 

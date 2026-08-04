@@ -16,7 +16,7 @@ const groups: NavGroup[] = [
     icon: <Upload className="h-4 w-4" />,
     links: [
       { to: "/upload", label: "上传数据", icon: <Upload className="h-4 w-4" /> },
-      { to: "/browse", label: "数据浏览", icon: <Database className="h-4 w-4" /> },
+      { to: "/data-browser", label: "数据浏览", icon: <Database className="h-4 w-4" /> },
       { to: "/imports", label: "导入历史", icon: <History className="h-4 w-4" /> },
     ],
   },

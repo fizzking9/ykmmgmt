@@ -106,7 +106,8 @@ async def list_imports(
             "total_rows": job.row_count,
             "rows_inserted": job.rows_inserted,
             "rows_updated": job.rows_updated,
-            "rows_failed": job.error_count,
+            "rows_skipped": job.rows_skipped,
+            "rows_rejected": job.error_count,
             "created_at": job.created_at.isoformat() if job.created_at else None,
         })
 

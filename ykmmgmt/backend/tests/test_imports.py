@@ -215,6 +215,7 @@ class TestUpsertKey:
         assert key == []
 
 
+@pytest.mark.usefixtures("_dispose_engine_after_test")
 @pytest.mark.asyncio(loop_scope="class")
 class TestUpsertIntegration:
     """Integration tests for upsert behavior — requires running database."""

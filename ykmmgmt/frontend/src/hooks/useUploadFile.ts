@@ -8,7 +8,7 @@ export interface UploadResult {
   rows_inserted: number;
   rows_updated: number;
   rows_skipped: number;
-  rows_failed: number;
+  rows_rejected: number;
   cleaning_report: {
     steps: string[];
     warnings_per_column: Record<string, string[]>;
