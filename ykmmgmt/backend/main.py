@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models import RefundOrder, ServiceRefundWorkOrder, WalletWithdrawal
 from app.routers.imports import router as imports_router
 from app.routers.tables import router as tables_router
+from app.routers.views import router as views_router
 from app.services.schema_validator import register_model
 
 # Register models for schema validation (English name → model class)
@@ -23,6 +24,7 @@ app = FastAPI(title="YKMMgmt", version="0.1.0")
 # Include routers
 app.include_router(imports_router)
 app.include_router(tables_router)
+app.include_router(views_router)
 
 # CORS — allow frontend dev server and localhost origins
 app.add_middleware(

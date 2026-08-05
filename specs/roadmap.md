@@ -107,16 +107,18 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 **Goal:** Build comprehensive data views (joins, columns, filters, grouping, aggregation) and store both the JSON config and the generated SQL.
 
-- [ ] Backend: View definition model — `name`, `description`, `config_json` (join specs, column selections, filters, groupings, aggregations), `generated_sql` (the compiled SQL), `created_at`, `updated_at`
-- [ ] Backend: SQL generation engine — translate JSON config into valid parameterized SQL from the table schema
-- [ ] Backend: `POST /api/views` — create a view (accept config, generate SQL, store both)
-- [ ] Backend: `PUT /api/views/{id}` — update a view definition
-- [ ] Frontend: Table selector — pick source table(s) for the view
-- [ ] Frontend: Join builder — select join type (INNER/LEFT/RIGHT), join key columns between selected tables
-- [ ] Frontend: Column picker — select which columns to include in the result
-- [ ] Frontend: Filter builder — add WHERE conditions with column, operator, and value
-- [ ] Frontend: Grouping & aggregation — select GROUP BY columns and aggregation functions (SUM, COUNT, AVG, MIN, MAX) on numeric columns
-- [ ] Frontend: Live preview — run the generated SQL against a small sample and show the result
+- [x] Backend: View definition model — `name`, `description`, `config_json` (join specs, column selections, filters, groupings, aggregations, computed columns), `generated_sql` (the compiled SQL), `created_at`, `updated_at`
+- [x] Backend: SQL generation engine — translate JSON config into valid parameterized SQL from the table schema (ViewSQLBuilder with COALESCE for null-safe arithmetic, INTERVAL for datetime shifts, chained expressions)
+- [x] Backend: `POST /api/views` — create a view (accept config, validate table/column references, generate SQL, store both)
+- [x] Backend: `PUT /api/views/{id}` — update a view definition (SQL regenerated on config change, preserved on name-only change)
+- [x] Frontend: Table selector — pick source table(s) for the view (multi-select with join support)
+- [x] Frontend: Join builder — select join type (INNER/LEFT/RIGHT), join key columns between selected tables, self-join support with alias disambiguation
+- [x] Frontend: Column picker — select which columns to include in the result (checkbox list with alias input, integrated computed column selection)
+- [x] Frontend: Filter builder — add WHERE conditions with column, operator (type-aware: numeric/date vs text), and value
+- [x] Frontend: Grouping & aggregation — select GROUP BY columns (badge toggle incl. computed columns) and aggregation functions (SUM, COUNT, AVG, MIN, MAX) on any column
+- [x] Frontend: Live preview — run the generated SQL against a small sample (50 rows) and show the result + generated SQL
+- [x] **Computed columns** — chained arithmetic (+, -, *, /) with COALESCE null-safety, datetime shift (± days/months/years), collapsible config card with confirm button, type-filtered column selectors
+- [x] State persistence via React Context (ViewBuilderContext) across navigation
 
 ---
 

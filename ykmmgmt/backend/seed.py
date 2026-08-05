@@ -256,7 +256,7 @@ async def cleanup():
     async with async_session_factory() as session:
         await session.execute(
             text(
-                "TRUNCATE TABLE import_jobs, datasources, "
+                "TRUNCATE TABLE import_jobs, datasources, views, "
                 "service_refund_work_orders, refund_orders, "
                 "wallet_withdrawals RESTART IDENTITY CASCADE"
             )

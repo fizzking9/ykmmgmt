@@ -6,6 +6,7 @@ import UploadPage from "@/pages/UploadPage";
 import ImportHistoryPage from "@/pages/ImportHistoryPage";
 import DashboardPage from "@/pages/DashboardPage";
 import DataBrowserPage from "@/pages/DataBrowserPage";
+import ViewBuilderPage from "@/pages/ViewBuilderPage";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/imports" element={<ImportHistoryPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/data-browser" element={<DataBrowserPage />} />
+          <Route path="/views/builder/:id?" element={<ViewBuilderPage />} />
         </Route>
       </Routes>
     </>
