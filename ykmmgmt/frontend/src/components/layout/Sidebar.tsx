@@ -1,7 +1,7 @@
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { Upload, History, ChevronDown, Database } from "lucide-react";
+import { Upload, History, ChevronDown, Database, BarChart3, Eye } from "lucide-react";
 import { useState } from "react";
 
 interface NavGroup {
@@ -18,6 +18,13 @@ const groups: NavGroup[] = [
       { to: "/upload", label: "上传数据", icon: <Upload className="h-4 w-4" /> },
       { to: "/data-browser", label: "数据浏览", icon: <Database className="h-4 w-4" /> },
       { to: "/imports", label: "导入历史", icon: <History className="h-4 w-4" /> },
+    ],
+  },
+  {
+    title: "数据分析",
+    icon: <BarChart3 className="h-4 w-4" />,
+    links: [
+      { to: "/views/builder", label: "视图创建", icon: <Eye className="h-4 w-4" /> },
     ],
   },
 ];

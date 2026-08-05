@@ -23,7 +23,7 @@ if config.config_file_name is not None:
 # Set sqlalchemy.url from environment or .env
 config.set_main_option(
     "sqlalchemy.url",
-    os.getenv("DATABASE_URL", "postgresql+asyncpg://ykmmgmt:ykmmgmt@localhost:5432/ykmmgmt"),
+    os.getenv("DATABASE_URL", "postgresql+asyncpg://ykmmgmt:ykmmgmt@127.0.0.1:15432/ykmmgmt"),
 )
 
 # add your model's MetaData object here
