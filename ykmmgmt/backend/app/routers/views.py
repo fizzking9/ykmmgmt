@@ -13,6 +13,7 @@ from app.schemas.view import (
     PreviewResponse,
     ViewConfig,
     ViewCreate,
+    ViewDataResponse,
     ViewListResponse,
     ViewResponse,
     ViewUpdate,
@@ -61,7 +62,7 @@ def _view_to_response(view: View) -> ViewResponse:
 @router.get("/views", response_model=list[ViewListResponse])
 async def list_views(db: AsyncSession = Depends(get_db)):
     """List all saved views (summary only — no SQL or config)."""
-    stmt = select(View).order_by(View.updated_at.desc())
+    stmt = select(View).order_by(View.created_at.desc())
     result = await db.execute(stmt)
     views = result.scalars().all()
     return [ViewListResponse.model_validate(v) for v in views]
@@ -154,6 +155,85 @@ async def update_view(
     await db.flush()
     await db.refresh(view)
     return _view_to_response(view)
+
+
+@router.delete("/views/{view_id}", status_code=204)
+async def delete_view(view_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Permanently delete a view."""
+    stmt = select(View).where(View.id == view_id)
+    result = await db.execute(stmt)
+    view = result.scalar_one_or_none()
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"视图 '{view_id}' 不存在")
+    await db.delete(view)
+    await db.flush()
+
+
+@router.get("/views/{view_id}/data", response_model=ViewDataResponse)
+async def get_view_data(
+    view_id: uuid.UUID,
+    page: int = 1,
+    size: int = 20,
+    db: AsyncSession = Depends(get_db),
+):
+    """Execute the view's stored SQL and return paginated results."""
+    stmt = select(View).where(View.id == view_id)
+    result = await db.execute(stmt)
+    view = result.scalar_one_or_none()
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"视图 '{view_id}' 不存在")
+
+    if not view.generated_sql:
+        raise HTTPException(status_code=400, detail="该视图没有存储的 SQL")
+
+    # Clamp size to max 100
+    size = max(1, min(size, 100))
+    page = max(1, page)
+
+    sql = view.generated_sql
+
+    # ── Count total rows ───────────────────────────────────────────────
+    count_sql = f"SELECT COUNT(*) AS cnt FROM ({sql}) AS _sub"
+    try:
+        cnt_result = await db.execute(text(count_sql))
+        total = cnt_result.scalar_one()
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"查询执行失败: {e}",
+        ) from e
+
+    # ── Execute paginated query ────────────────────────────────────────
+    offset = (page - 1) * size
+    paginated_sql = f"{sql}\nLIMIT {size} OFFSET {offset}"
+    try:
+        data_result = await db.execute(text(paginated_sql))
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"查询执行失败: {e}",
+        ) from e
+
+    columns = list(data_result.keys())
+
+    # Serialize rows
+    import datetime as dt
+
+    rows: list[dict] = []
+    for row in data_result.mappings().all():
+        row_dict: dict = {}
+        for key, val in row.items():
+            if isinstance(val, dt.datetime):
+                row_dict[key] = val.isoformat()
+            elif isinstance(val, dt.date):
+                row_dict[key] = val.isoformat()
+            elif isinstance(val, uuid.UUID):
+                row_dict[key] = str(val)
+            else:
+                row_dict[key] = val
+        rows.append(row_dict)
+
+    return ViewDataResponse(rows=rows, total=total, page=page, size=size, columns=columns)
 
 
 # ── Preview Endpoint ────────────────────────────────────────────────────────

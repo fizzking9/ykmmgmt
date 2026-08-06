@@ -116,7 +116,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [x] Frontend: Column picker — select which columns to include in the result (checkbox list with alias input, integrated computed column selection)
 - [x] Frontend: Filter builder — add WHERE conditions with column, operator (type-aware: numeric/date vs text), and value
 - [x] Frontend: Grouping & aggregation — select GROUP BY columns (badge toggle incl. computed columns) and aggregation functions (SUM, COUNT, AVG, MIN, MAX) on any column
-- [x] Frontend: Live preview — run the generated SQL against a small sample (50 rows) and show the result + generated SQL
+- [x] Frontend: Live preview — run the generated SQL against a small sample (20 rows) and show the result + generated SQL
 - [x] **Computed columns** — chained arithmetic (+, -, *, /) with COALESCE null-safety, datetime shift (± days/months/years), collapsible config card with confirm button, type-filtered column selectors
 - [x] State persistence via React Context (ViewBuilderContext) across navigation
 
@@ -126,15 +126,15 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 **Goal:** List, preview, edit, and delete saved views.
 
-- [ ] Backend: `GET /api/views` — list all saved views with metadata
-- [ ] Backend: `GET /api/views/{id}` — full view definition + generated SQL
-- [ ] Backend: `GET /api/views/{id}/data` — execute the stored SQL and return results (paginated)
-- [ ] Backend: `DELETE /api/views/{id}` — delete a view
-- [ ] Frontend: Views list page — table of saved views with name, description, created date
-- [ ] Frontend: Preview dialog — execute the view's SQL and display results in a paginated table
-- [ ] Frontend: Edit button — navigate to Phase 5 builder pre-filled with the view's config
-- [ ] Frontend: Delete button with confirmation
-- [ ] Sidebar: Add "Data Views" nav item
+- [x] Backend: `GET /api/views` — list all saved views with metadata
+- [x] Backend: `GET /api/views/{id}` — full view definition + generated SQL
+- [x] Backend: `GET /api/views/{id}/data` — execute the stored SQL and return results (paginated)
+- [x] Backend: `DELETE /api/views/{id}` — delete a view
+- [x] Frontend: Views list page — table of saved views with name, description, created date
+- [x] Frontend: Preview dialog — execute the view's SQL and display results in a paginated table
+- [x] Frontend: Edit button — navigate to Phase 5 builder pre-filled with the view's config
+- [x] Frontend: Delete button with confirmation
+- [x] Sidebar: Add "Data Views" nav item
 
 ---
 

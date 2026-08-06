@@ -82,6 +82,14 @@ export interface PreviewResponse {
   columns: string[];
 }
 
+export interface ViewDataResponse {
+  rows: Record<string, unknown>[];
+  total: number;
+  page: number;
+  size: number;
+  columns: string[];
+}
+
 export interface ColumnInfo {
   name: string;
   type: string;
@@ -152,6 +160,28 @@ async function previewView(config: ViewConfig): Promise<PreviewResponse> {
   return res.json();
 }
 
+async function deleteView(id: string): Promise<void> {
+  const res = await fetch(`/api/views/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "删除视图失败" }));
+    throw new Error(err.detail || "删除视图失败");
+  }
+}
+
+async function fetchViewData(
+  id: string,
+  page: number,
+  size: number,
+): Promise<ViewDataResponse> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  const res = await fetch(`/api/views/${id}/data?${params}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "获取视图数据失败" }));
+    throw new Error(err.detail || "获取视图数据失败");
+  }
+  return res.json();
+}
+
 async function fetchTableSchema(tableName: string): Promise<ColumnInfo[]> {
   const res = await fetch(`/api/tables/${tableName}/schema`);
   if (!res.ok) throw new Error("获取表结构失败");
@@ -202,6 +232,33 @@ export function useUpdateView() {
     onError: (err: Error) => {
       toast.error(err.message);
     },
+  });
+}
+
+export function useDeleteView() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteView,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["views"] });
+      toast.success("视图已删除");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+}
+
+export function useViewData(
+  id: string | undefined,
+  page: number,
+  size: number,
+) {
+  return useQuery({
+    queryKey: ["viewData", id, page, size],
+    queryFn: () => fetchViewData(id!, page, size),
+    enabled: !!id,
+    staleTime: 10_000,
   });
 }
 

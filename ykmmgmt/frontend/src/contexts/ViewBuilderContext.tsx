@@ -4,6 +4,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import type { JoinSpec, PreviewResponse } from "@/hooks/useViews";
@@ -69,6 +70,7 @@ export interface ViewBuilderState {
   selectedComputedColumns: string[];
   previewResult: PreviewResponse | null;
   previewTab: "data" | "sql";
+  editingId: string | null;
 }
 
 // ── Context value ─────────────────────────────────────────────────────────
@@ -87,7 +89,9 @@ export interface ViewBuilderContextValue {
   setSelectedComputedColumns: (cols: string[]) => void;
   setPreviewResult: (result: PreviewResponse | null) => void;
   setPreviewTab: (tab: "data" | "sql") => void;
+  setEditingId: (id: string | null) => void;
   resetState: () => void;
+  clearConfig: () => void;
 }
 
 // ── Context ───────────────────────────────────────────────────────────────
@@ -107,6 +111,7 @@ const INITIAL_STATE: ViewBuilderState = {
   selectedComputedColumns: [],
   previewResult: null,
   previewTab: "data",
+  editingId: null,
 };
 
 export function ViewBuilderProvider({ children }: { children: ReactNode }) {
@@ -148,28 +153,50 @@ export function ViewBuilderProvider({ children }: { children: ReactNode }) {
   const setPreviewTab = useCallback((tab: "data" | "sql") => {
     setState((prev) => ({ ...prev, previewTab: tab }));
   }, []);
+  const setEditingId = useCallback((id: string | null) => {
+    setState((prev) => ({ ...prev, editingId: id }));
+  }, []);
   const resetState = useCallback(() => {
     setState(INITIAL_STATE);
   }, []);
+  const clearConfig = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      fromTables: [],
+      joins: [],
+      columns: [],
+      filters: [],
+      groupBy: [],
+      aggregations: [],
+      computedColumns: [],
+      selectedComputedColumns: [],
+      previewResult: null,
+      editingId: null,
+    }));
+  }, []);
+
+  const value = useMemo(() => ({
+    state,
+    setName,
+    setDescription,
+    setFromTables,
+    setJoins,
+    setColumns,
+    setFilters,
+    setGroupBy,
+    setAggregations,
+    setComputedColumns,
+    setSelectedComputedColumns,
+    setPreviewResult,
+    setPreviewTab,
+    setEditingId,
+    resetState,
+    clearConfig,
+  }), [state, setName, setDescription, setFromTables, setJoins, setColumns, setFilters, setGroupBy, setAggregations, setComputedColumns, setSelectedComputedColumns, setPreviewResult, setPreviewTab, setEditingId, resetState, clearConfig]);
 
   return (
     <ViewBuilderContext.Provider
-      value={{
-        state,
-        setName,
-        setDescription,
-        setFromTables,
-        setJoins,
-        setColumns,
-        setFilters,
-        setGroupBy,
-        setAggregations,
-        setComputedColumns,
-        setSelectedComputedColumns,
-        setPreviewResult,
-        setPreviewTab,
-        resetState,
-      }}
+      value={value}
     >
       {children}
     </ViewBuilderContext.Provider>

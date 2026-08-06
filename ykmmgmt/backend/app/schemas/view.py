@@ -150,3 +150,13 @@ class PreviewResponse(BaseModel):
     sql: str
     rows: list[dict[str, Any]]
     columns: list[str]
+
+
+class ViewDataResponse(BaseModel):
+    """Response body for view data execution endpoint."""
+
+    rows: list[dict[str, Any]]
+    total: int
+    page: int
+    size: int
+    columns: list[str]

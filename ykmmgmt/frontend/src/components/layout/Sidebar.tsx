@@ -1,7 +1,7 @@
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { Upload, History, ChevronDown, Database, BarChart3, Eye } from "lucide-react";
+import { Upload, History, ChevronDown, Database, BarChart3, Eye, LayoutGrid } from "lucide-react";
 import { useState } from "react";
 
 interface NavGroup {
@@ -24,6 +24,7 @@ const groups: NavGroup[] = [
     title: "数据分析",
     icon: <BarChart3 className="h-4 w-4" />,
     links: [
+      { to: "/views", label: "数据视图", icon: <LayoutGrid className="h-4 w-4" /> },
       { to: "/views/builder", label: "视图创建", icon: <Eye className="h-4 w-4" /> },
     ],
   },
@@ -38,7 +39,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
   };
 
   const isActiveGroup = (group: NavGroup) =>
-    group.links.some((link) => location.pathname === link.to);
+    group.links.some((link) => location.pathname.startsWith(link.to));
 
   return (
     <nav className="flex flex-col gap-2 p-4">
@@ -78,6 +79,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
                 <NavLink
                   key={link.to}
                   to={link.to}
+                  end={link.to === "/views"}
                   onClick={onNavClick}
                   className={({ isActive }) =>
                     cn(

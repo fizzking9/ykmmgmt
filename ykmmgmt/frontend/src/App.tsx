@@ -7,6 +7,7 @@ import ImportHistoryPage from "@/pages/ImportHistoryPage";
 import DashboardPage from "@/pages/DashboardPage";
 import DataBrowserPage from "@/pages/DataBrowserPage";
 import ViewBuilderPage from "@/pages/ViewBuilderPage";
+import ViewsListPage from "@/pages/ViewsListPage";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/data-browser" element={<DataBrowserPage />} />
           <Route path="/views/builder/:id?" element={<ViewBuilderPage />} />
+          <Route path="/views" element={<ViewsListPage />} />
         </Route>
       </Routes>
     </>

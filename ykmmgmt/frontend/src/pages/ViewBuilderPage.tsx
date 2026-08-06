@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useTables, TableOption } from "@/hooks/useTables";
 import {
+  useViews,
   useView,
   useCreateView,
   useUpdateView,
@@ -32,7 +33,7 @@ import {
   type ColumnInfo,
 } from "@/hooks/useViews";
 import { useViewBuilderContext } from "@/contexts/ViewBuilderContext";
-import type { ComputedColumnItem } from "@/contexts/ViewBuilderContext";
+import type { ComputedColumnItem, ColumnAlias } from "@/contexts/ViewBuilderContext";
 import {
   Plus,
   X,
@@ -47,6 +48,8 @@ import {
   Search,
   Calculator,
   Pencil,
+  CheckCheck,
+  RotateCcw,
 } from "lucide-react";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -235,8 +238,8 @@ function ColumnCombobox({
 export default function ViewBuilderPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
-  const isEditMode = !!id;
 
+  const { data: viewsList } = useViews();
   const { data: existingView, isLoading: viewLoading } = useView(id);
   const { data: tables, isLoading: tablesLoading } = useTables();
   const createView = useCreateView();
@@ -246,9 +249,20 @@ export default function ViewBuilderPage() {
   const viewBuilder = useViewBuilderContext();
   const { state } = viewBuilder;
 
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    targetId: string;
+    targetName: string;
+  } | null>(null);
+
+  // Guard ref to prevent re-loading the same view on every render
+  const loadedViewIdRef = useRef<string | null>(null);
+
   // ── Load existing view in edit mode ────────────────────────────────────
   useEffect(() => {
-    if (existingView) {
+    if (existingView && loadedViewIdRef.current !== existingView.id) {
+      loadedViewIdRef.current = existingView.id;
+      viewBuilder.setEditingId(existingView.id);
       viewBuilder.setName(existingView.name);
       viewBuilder.setDescription(existingView.description || "");
       viewBuilder.setFromTables(existingView.config_json.from_tables);
@@ -391,11 +405,20 @@ export default function ViewBuilderPage() {
       })),
       columns: state.columns
         .filter((c) => c.column)
-        .map((c) => ({
-          table: c.table,
-          column: c.column,
-          alias: c.alias || null,
-        })),
+        .map((c) => {
+          // Use explicit alias if set, otherwise generate Chinese table.column label
+          const defaultAlias = (() => {
+            const tbl = tableDisplayName(c.table, tables);
+            const colInfo = schemaMap[c.table]?.find((sc) => sc.name === c.column);
+            const col = colInfo?.label || c.column;
+            return `${tbl}.${col}`;
+          })();
+          return {
+            table: c.table,
+            column: c.column,
+            alias: c.alias || defaultAlias,
+          };
+        }),
       filters: state.filters
         .filter((f) => f.column)
         .map((f) => ({
@@ -444,9 +467,18 @@ export default function ViewBuilderPage() {
         }),
       selected_computed_columns: state.selectedComputedColumns,
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.fromTables, state.joins, state.columns, state.filters, state.groupBy, state.aggregations, state.computedColumns, state.selectedComputedColumns]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function getColumnDisplayAlias(table: string, colName: string): string {
+    const tbl = tableDisplayName(table, tables);
+    const colInfo = schemaMap[table]?.find((sc) => sc.name === colName);
+    const col = colInfo?.label || colName;
+    return `${tbl}.${col}`;
+  }
 
   function handleSelectPrimaryTable(tableName: string | null) {
     if (!tableName) return;
@@ -487,7 +519,7 @@ export default function ViewBuilderPage() {
     if (exists) {
       viewBuilder.setColumns(state.columns.filter((c) => !(c.table === table && c.column === colName)));
     } else {
-      viewBuilder.setColumns([...state.columns, { table, column: colName, alias: "" }]);
+      viewBuilder.setColumns([...state.columns, { table, column: colName, alias: getColumnDisplayAlias(table, colName) }]);
     }
   }
 
@@ -497,6 +529,43 @@ export default function ViewBuilderPage() {
         c.table === table && c.column === colName ? { ...c, alias } : c,
       ),
     );
+  }
+
+  function handleSelectAllColumns() {
+    const allColumns: ColumnAlias[] = visibleAllColumns.map(({ table: t, col }) => ({
+      table: t,
+      column: col.name,
+      alias: getColumnDisplayAlias(t, col.name),
+    }));
+    viewBuilder.setColumns(allColumns);
+    viewBuilder.setSelectedComputedColumns(
+      state.computedColumns.filter((cc) => cc.alias).map((cc) => cc.alias),
+    );
+  }
+
+  function handleClearAllColumns() {
+    viewBuilder.setColumns([]);
+    viewBuilder.setSelectedComputedColumns([]);
+  }
+
+  function handleInvertColumnSelection() {
+    const currentSet = new Set(
+      state.columns.map((c) => `${c.table}.${c.column}`),
+    );
+    const inverted: ColumnAlias[] = visibleAllColumns
+      .filter(({ table: t, col }) => !currentSet.has(`${t}.${col.name}`))
+      .map(({ table: t, col }) => ({
+        table: t,
+        column: col.name,
+        alias: getColumnDisplayAlias(t, col.name),
+      }));
+    viewBuilder.setColumns(inverted);
+    // Invert computed column selections
+    const selectedSet = new Set(state.selectedComputedColumns);
+    const invertedCC = state.computedColumns
+      .filter((cc) => cc.alias && !selectedSet.has(cc.alias))
+      .map((cc) => cc.alias);
+    viewBuilder.setSelectedComputedColumns(invertedCC);
   }
 
   function handleAddFilter() {
@@ -650,23 +719,50 @@ export default function ViewBuilderPage() {
       return;
     }
     const config = compileConfig();
+    const trimmedName = state.name.trim();
+
+    // Check if a view with this name already exists
+    const existingWithName = viewsList?.find((v) => v.name === trimmedName);
+
+    if (existingWithName) {
+      // Name already exists — confirm modification
+      setConfirmDialog({
+        open: true,
+        targetId: existingWithName.id,
+        targetName: trimmedName,
+      });
+      return;
+    }
+
+    // Name doesn't exist — create new view
     try {
-      if (isEditMode && id) {
-        const result = await updateView.mutateAsync({
-          id,
-          name: state.name.trim(),
-          description: state.description || null,
-          config_json: config,
-        });
-        navigate(`/views/builder/${result.id}`, { replace: true });
-      } else {
-        const result = await createView.mutateAsync({
-          name: state.name.trim(),
-          description: state.description || null,
-          config_json: config,
-        });
-        navigate(`/views/builder/${result.id}`, { replace: true });
-      }
+      const result = await createView.mutateAsync({
+        name: trimmedName,
+        description: state.description || null,
+        config_json: config,
+      });
+      viewBuilder.setEditingId(result.id);
+      loadedViewIdRef.current = result.id;
+      navigate(`/views/builder/${result.id}`, { replace: true });
+    } catch {
+      // error handled by mutation
+    }
+  }
+
+  async function handleConfirmUpdate() {
+    if (!confirmDialog) return;
+    const config = compileConfig();
+    try {
+      const result = await updateView.mutateAsync({
+        id: confirmDialog.targetId,
+        name: state.name.trim(),
+        description: state.description || null,
+        config_json: config,
+      });
+      setConfirmDialog(null);
+      viewBuilder.setEditingId(result.id);
+      loadedViewIdRef.current = result.id;
+      navigate(`/views/builder/${result.id}`, { replace: true });
     } catch {
       // error handled by mutation
     }
@@ -683,7 +779,7 @@ export default function ViewBuilderPage() {
   const previewResult = state.previewResult;
   const previewTab = state.previewTab;
 
-  if (viewLoading && isEditMode) {
+  if (viewLoading && id) {
     return (
       <div className="p-8 text-center">
         <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
@@ -695,7 +791,7 @@ export default function ViewBuilderPage() {
   return (
     <div className="h-full">
       <h2 className="mb-6 text-2xl font-bold tracking-tight">
-        {isEditMode ? "编辑视图" : "新建视图"}
+        {state.editingId ? "编辑视图" : "新建视图"}
       </h2>
 
       <div className="flex gap-6" style={{ minHeight: "calc(100vh - 12rem)" }}>
@@ -996,6 +1092,35 @@ export default function ViewBuilderPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="mb-2 flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAllColumns}
+                    className="h-7 text-xs"
+                  >
+                    <CheckCheck className="mr-1 h-3 w-3" />
+                    全选
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearAllColumns}
+                    className="h-7 text-xs"
+                  >
+                    <X className="mr-1 h-3 w-3" />
+                    取消全选
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleInvertColumnSelection}
+                    className="h-7 text-xs"
+                  >
+                    <ArrowRightLeft className="mr-1 h-3 w-3" />
+                    反选
+                  </Button>
+                </div>
                 <div className="max-h-64 space-y-1 overflow-x-auto overflow-y-auto">
                   {visibleAllColumns.map(({ table: t, col }) => {
                     const isChecked = state.columns.some(
@@ -1805,7 +1930,7 @@ export default function ViewBuilderPage() {
               ) : (
                 <Save className="mr-1 h-4 w-4" />
               )}
-              {isEditMode ? "更新" : "保存"}
+              保存
             </Button>
             <Button
               variant="outline"
@@ -1819,7 +1944,56 @@ export default function ViewBuilderPage() {
               )}
               预览
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                loadedViewIdRef.current = null;
+                viewBuilder.clearConfig();
+                viewBuilder.setName("");
+                viewBuilder.setDescription("");
+                navigate("/views/builder", { replace: true });
+              }}
+            >
+              <RotateCcw className="mr-1 h-4 w-4" />
+              清除配置
+            </Button>
           </div>
+
+          {/* Confirmation Dialog */}
+          {confirmDialog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div
+                className="absolute inset-0 bg-black/50"
+                onClick={() => setConfirmDialog(null)}
+              />
+              <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
+                <h3 className="text-lg font-semibold">确认修改</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  视图名称「{confirmDialog.targetName}」已存在，是否修改该视图？
+                </p>
+                <div className="mt-6 flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setConfirmDialog(null)}
+                    disabled={isSaving}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleConfirmUpdate}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-1 h-4 w-4" />
+                    )}
+                    确定
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Right: Preview Panel ──────────────────────────────────────── */}
