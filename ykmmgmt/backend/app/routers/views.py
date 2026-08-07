@@ -34,13 +34,13 @@ def _get_model_registry() -> dict:
     return registry
 
 
-def _build_sql_from_config(config: ViewConfig) -> tuple[str, dict]:
+def _build_sql_from_config(config: ViewConfig, *, apply_limit: bool = True) -> tuple[str, dict]:
     """Generate parameterized SQL from a ViewConfig.
 
     Validates table/column references against the model registry.
     """
     builder = ViewSQLBuilder(config, _get_model_registry())
-    return builder.build()
+    return builder.build(apply_limit=apply_limit)
 
 
 def _view_to_response(view: View) -> ViewResponse:
@@ -107,7 +107,15 @@ async def create_view(body: ViewCreate, db: AsyncSession = Depends(get_db)):
         generated_sql=sql,
     )
     db.add(view)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception as e:
+        if "uq_views_name" in str(e) or "unique" in str(e).lower():
+            raise HTTPException(
+                status_code=409,
+                detail=f"视图名称 '{body.name}' 已存在",
+            ) from e
+        raise
     await db.refresh(view)
     return _view_to_response(view)
 
@@ -176,7 +184,10 @@ async def get_view_data(
     size: int = 20,
     db: AsyncSession = Depends(get_db),
 ):
-    """Execute the view's stored SQL and return paginated results."""
+    """Execute the view's stored SQL and return paginated results.
+
+    Pass ``size=0`` to return **all** rows (no pagination).
+    """
     stmt = select(View).where(View.id == view_id)
     result = await db.execute(stmt)
     view = result.scalar_one_or_none()
@@ -186,28 +197,53 @@ async def get_view_data(
     if not view.generated_sql:
         raise HTTPException(status_code=400, detail="该视图没有存储的 SQL")
 
-    # Clamp size to max 100
-    size = max(1, min(size, 100))
-    page = max(1, page)
+    # Regenerate SQL + params from stored config so that parameterized
+    # filters (date ranges, operator values) have matching bind values.
+    config = ViewConfig.model_validate(view.config_json)
+    try:
+        sql, params = _build_sql_from_config(config, apply_limit=True)
+    except SQLBuildError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
-    sql = view.generated_sql
+    fetch_all = size == 0
+    config_limit = config.limit
 
-    # ── Count total rows ───────────────────────────────────────────────
+    if not fetch_all:
+        # Clamp size to max 100, and respect user's config limit as a cap
+        size = max(1, min(size, 100))
+        page = max(1, page)
+        if config_limit and config_limit > 0:
+            size = min(size, config_limit)
+
+    # ── Count total rows (uncapped) ───────────────────────────────────
     count_sql = f"SELECT COUNT(*) AS cnt FROM ({sql}) AS _sub"
     try:
-        cnt_result = await db.execute(text(count_sql))
-        total = cnt_result.scalar_one()
+        cnt_result = await db.execute(text(count_sql), params)
+        actual_total = cnt_result.scalar_one()
     except Exception as e:
         raise HTTPException(
             status_code=400,
             detail=f"查询执行失败: {e}",
         ) from e
 
-    # ── Execute paginated query ────────────────────────────────────────
-    offset = (page - 1) * size
-    paginated_sql = f"{sql}\nLIMIT {size} OFFSET {offset}"
+    # Apply config limit as a hard cap on both total count and returned rows.
+    # Wrap the base SQL in a subquery with LIMIT so that pagination
+    # (OFFSET/LIMIT applied below) operates within the user's row budget.
+    if config_limit and config_limit > 0:
+        total = min(actual_total, config_limit)
+        sql = f"SELECT * FROM ({sql}) AS _capped LIMIT {config_limit}"
+    else:
+        total = actual_total
+
+    # ── Execute query (paginated or full) ──────────────────────────────
+    if fetch_all:
+        exec_sql = sql
+    else:
+        offset = (page - 1) * size
+        exec_sql = f"SELECT * FROM ({sql}) AS _paged LIMIT {size} OFFSET {offset}"
+
     try:
-        data_result = await db.execute(text(paginated_sql))
+        data_result = await db.execute(text(exec_sql), params)
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -233,7 +269,13 @@ async def get_view_data(
                 row_dict[key] = val
         rows.append(row_dict)
 
-    return ViewDataResponse(rows=rows, total=total, page=page, size=size, columns=columns)
+    return ViewDataResponse(
+        rows=rows,
+        total=total,
+        page=1 if fetch_all else page,
+        size=total if fetch_all else size,
+        columns=columns,
+    )
 
 
 # ── Preview Endpoint ────────────────────────────────────────────────────────
@@ -248,12 +290,17 @@ async def preview_view(body: PreviewRequest, db: AsyncSession = Depends(get_db))
     config = body.config_json
 
     try:
-        sql, params = _build_sql_from_config(config)
+        sql, params = _build_sql_from_config(config, apply_limit=True)
     except SQLBuildError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    # Add LIMIT and execute
-    preview_sql = f"{sql}\nLIMIT 20"
+    # Apply preview LIMIT: use user's limit (capped at 20) or default 20
+    user_limit = config.limit
+    if user_limit and user_limit > 0:
+        preview_limit = min(user_limit, 20)
+    else:
+        preview_limit = 20
+    preview_sql = f"{sql}\nLIMIT {preview_limit}"
     try:
         result = await db.execute(text(preview_sql), params)
     except Exception as e:
