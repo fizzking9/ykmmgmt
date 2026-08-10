@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Table,
@@ -12,6 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useViews, useViewData, useDeleteView, type ViewListResponse } from "@/hooks/useViews";
 import {
+  SortableTimeHeader,
+  nextSortDir,
+  type TimeSortCol,
+  type SortDir,
+} from "@/components/SortableTimeHeader";
+import {
   Eye,
   Pencil,
   Trash2,
@@ -21,6 +27,7 @@ import {
   X,
   Loader2,
   RefreshCw,
+  Plus,
 } from "lucide-react";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -229,17 +236,43 @@ export default function ViewsListPage() {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string>("");
   const [deleteTarget, setDeleteTarget] = useState<ViewListResponse | null>(null);
+  const [sortCol, setSortCol] = useState<TimeSortCol>("created_at");
+  const [sortDir, setSortDir] = useState<SortDir>(null);
 
   const previewView = views?.find((v) => v.id === previewId);
+
+  const handleSort = (col: TimeSortCol) => {
+    if (sortCol === col) {
+      setSortDir(nextSortDir(sortDir));
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  };
+
+  // Default (sortDir null): backend order — created_at descending
+  const sortedViews = useMemo(() => {
+    const list = [...(views ?? [])];
+    if (!sortDir) return list;
+    list.sort((a, b) => new Date(a[sortCol]).getTime() - new Date(b[sortCol]).getTime());
+    if (sortDir === "desc") list.reverse();
+    return list;
+  }, [views, sortCol, sortDir]);
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">数据视图</h2>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          刷新
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/views/builder")}>
+            <Plus className="mr-2 h-4 w-4" />
+            新建
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            刷新
+          </Button>
+        </div>
       </div>
 
       {/* Error state */}
@@ -263,6 +296,7 @@ export default function ViewsListPage() {
                 <TableHead>名称</TableHead>
                 <TableHead>描述</TableHead>
                 <TableHead>创建时间</TableHead>
+                <TableHead>更新时间</TableHead>
                 <TableHead className="w-[200px]">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -274,6 +308,9 @@ export default function ViewsListPage() {
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-5 w-48" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-40" />
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-5 w-40" />
@@ -312,12 +349,29 @@ export default function ViewsListPage() {
               <TableRow>
                 <TableHead>名称</TableHead>
                 <TableHead>描述</TableHead>
-                <TableHead>创建时间</TableHead>
+                <TableHead>
+                  <SortableTimeHeader
+                    label="创建时间"
+                    col="created_at"
+                    sortCol={sortCol}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                  />
+                </TableHead>
+                <TableHead>
+                  <SortableTimeHeader
+                    label="更新时间"
+                    col="updated_at"
+                    sortCol={sortCol}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                  />
+                </TableHead>
                 <TableHead className="w-[240px]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {views.map((view) => (
+              {sortedViews.map((view) => (
                 <TableRow key={view.id}>
                   <TableCell className="font-medium max-w-[200px] truncate" title={view.name}>
                     {view.name}
@@ -329,6 +383,7 @@ export default function ViewsListPage() {
                     {view.description || "—"}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{formatDate(view.created_at)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{formatDate(view.updated_at)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       {/* 可视化 */}

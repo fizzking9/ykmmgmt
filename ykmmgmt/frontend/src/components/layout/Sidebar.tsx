@@ -34,6 +34,7 @@ const groups: NavGroup[] = [
     icon: <BarChart3 className="h-4 w-4" />,
     links: [
       { to: "/views", label: "数据视图", icon: <LayoutGrid className="h-4 w-4" /> },
+      { to: "/visualizations", label: "可视化", icon: <BarChart3 className="h-4 w-4" /> },
       { to: "/views/builder", label: "视图创建", icon: <Eye className="h-4 w-4" /> },
       {
         to: "/visualizations/builder",
@@ -54,6 +55,20 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
 
   const isActiveGroup = (group: NavGroup) =>
     group.links.some((link) => location.pathname.startsWith(link.to));
+
+  // Explicit active logic: NavLink's default prefix matching would highlight
+  // "可视化" (/visualizations) while on the builder (/visualizations/builder/*).
+  const isLinkActive = (to: string) => {
+    if (to === "/views") return location.pathname === "/views";
+    if (to === "/visualizations") {
+      return (
+        location.pathname === "/visualizations" ||
+        (location.pathname.startsWith("/visualizations/") &&
+          !location.pathname.startsWith("/visualizations/builder"))
+      );
+    }
+    return location.pathname.startsWith(to);
+  };
 
   return (
     <nav className="flex flex-col gap-2 p-4">
@@ -93,12 +108,13 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
                 <NavLink
                   key={link.to}
                   to={link.to}
-                  end={link.to === "/views"}
                   onClick={onNavClick}
-                  className={({ isActive }) =>
+                  className={() =>
                     cn(
                       "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
-                      isActive ? "bg-muted font-medium text-primary" : "text-muted-foreground",
+                      isLinkActive(link.to)
+                        ? "bg-muted font-medium text-primary"
+                        : "text-muted-foreground",
                     )
                   }
                 >

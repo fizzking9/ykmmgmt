@@ -144,8 +144,12 @@ export function useUpdateVisualization() {
       chart_type?: string;
       config_json?: Record<string, unknown>;
     }) => updateVisualization(id, data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["visualizations"] });
+      // Cached render data (staleTime: Infinity) must be dropped so the list
+      // thumbnails and full-size view show the updated visualization
+      // immediately — without waiting for a manual 刷新.
+      queryClient.invalidateQueries({ queryKey: ["visualizationData", variables.id] });
       toast.success("可视化更新成功");
     },
     onError: (err: Error) => {
@@ -158,8 +162,9 @@ export function useDeleteVisualization() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteVisualization,
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ["visualizations"] });
+      queryClient.removeQueries({ queryKey: ["visualizationData", id] });
       toast.success("可视化已删除");
     },
     onError: (err: Error) => {
@@ -173,6 +178,8 @@ export function useVisualizationData(id: string | undefined) {
     queryKey: ["visualizationData", id],
     queryFn: () => fetchVisualizationData(id!),
     enabled: !!id,
-    staleTime: 10_000,
+    // Data is cached until explicitly invalidated by the manual 刷新 button —
+    // revisiting a page (tab/route navigation) must NOT re-query.
+    staleTime: Infinity,
   });
 }

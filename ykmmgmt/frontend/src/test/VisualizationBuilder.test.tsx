@@ -36,13 +36,16 @@ vi.mock("@/hooks/useViews", () => ({
 }));
 
 vi.mock("@/hooks/useVisualizations", () => ({
+  useVisualizations: () => ({ data: [], isLoading: false }),
   useVisualization: () => ({ data: undefined, isLoading: false }),
   useCreateVisualization: () => ({
     mutate: vi.fn(),
+    mutateAsync: vi.fn(),
     isPending: false,
   }),
   useUpdateVisualization: () => ({
     mutate: vi.fn(),
+    mutateAsync: vi.fn(),
     isPending: false,
   }),
 }));
@@ -184,6 +187,13 @@ describe("VisualizationBuilderPage", () => {
     renderPage("/visualizations/builder?view_id=view-1");
     fireEvent.click(screen.getByText("柱状图"));
     expect(screen.getByText("柱状图配置")).toBeInTheDocument();
+    expect(screen.getByText("聚合方式")).toBeInTheDocument();
+  });
+
+  it("shows the pie aggregation selector when 饼图 is selected", () => {
+    renderPage("/visualizations/builder?view_id=view-1");
+    fireEvent.click(screen.getByText("饼图"));
+    expect(screen.getByText("饼图配置")).toBeInTheDocument();
     expect(screen.getByText("聚合方式")).toBeInTheDocument();
   });
 });

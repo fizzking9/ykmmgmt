@@ -92,7 +92,15 @@ async def create_visualization(body: VisualizationCreate, db: AsyncSession = Dep
         config_json=body.config_json,
     )
     db.add(viz)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception as e:
+        if "uq_visualizations_name" in str(e) or "unique" in str(e).lower():
+            raise HTTPException(
+                status_code=409,
+                detail=f"可视化名称 '{body.name}' 已存在",
+            ) from e
+        raise
     await db.refresh(viz)
     return _viz_to_response(viz)
 

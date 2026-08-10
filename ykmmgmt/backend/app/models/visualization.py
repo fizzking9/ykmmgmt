@@ -14,7 +14,9 @@ class Visualization(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="主键ID"
     )
-    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="可视化名称")
+    name: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True, comment="可视化名称"
+    )
     view_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("views.id", ondelete="CASCADE"),
