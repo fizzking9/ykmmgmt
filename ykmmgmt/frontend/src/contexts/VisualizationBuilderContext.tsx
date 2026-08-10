@@ -118,7 +118,7 @@ export function getDefaultConfig(chartType: ChartType): Record<string, unknown> 
         stack_bars: false,
       };
     case "pie":
-      return { label_column: "", value_column: "", title: "" };
+      return { label_column: "", value_column: "", title: "", aggregation: "SUM" };
     case "histogram":
       // Distribution of one or more numeric columns
       return { columns: [], bins: 20, title: "", x_label: "", y_label: "" };

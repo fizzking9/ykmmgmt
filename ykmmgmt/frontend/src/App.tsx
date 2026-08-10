@@ -9,6 +9,8 @@ import DataBrowserPage from "@/pages/DataBrowserPage";
 import ViewBuilderPage from "@/pages/ViewBuilderPage";
 import ViewsListPage from "@/pages/ViewsListPage";
 import VisualizationBuilderPage from "@/pages/VisualizationBuilderPage";
+import VisualizationsListPage from "@/pages/VisualizationsListPage";
+import VisualizationViewPage from "@/pages/VisualizationViewPage";
 
 export default function App() {
   return (
@@ -24,6 +26,8 @@ export default function App() {
           <Route path="/views/builder/:id?" element={<ViewBuilderPage />} />
           <Route path="/views" element={<ViewsListPage />} />
           <Route path="/visualizations/builder/:id?" element={<VisualizationBuilderPage />} />
+          <Route path="/visualizations" element={<VisualizationsListPage />} />
+          <Route path="/visualizations/:id" element={<VisualizationViewPage />} />
         </Route>
       </Routes>
     </>

@@ -69,6 +69,31 @@ async def test_create_visualization_success():
 
 
 @pytest.mark.asyncio
+async def test_create_visualization_duplicate_name_conflict():
+    """POST /api/visualizations returns 409 when the name already exists."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_view(client)
+        name = _unique_name("重复图表")
+        payload = {
+            "name": name,
+            "view_id": view_id,
+            "chart_type": "bar",
+            "config_json": {"x_column": "id", "y_columns": ["id"]},
+        }
+        resp = await client.post("/api/visualizations", json=payload)
+        assert resp.status_code == 201
+        viz_id = resp.json()["id"]
+
+        # Same name again -> conflict
+        resp2 = await client.post("/api/visualizations", json=payload)
+        assert resp2.status_code == 409
+        assert "已存在" in resp2.json()["detail"]
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
 async def test_create_visualization_histogram():
     """POST /api/visualizations accepts the histogram chart type."""
     transport = ASGITransport(app=app)

@@ -164,12 +164,12 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [x] Backend: `GET /api/visualizations` — list all saved visualizations with metadata
 - [x] Backend: `GET /api/visualizations/{id}` — full visualization definition + rendered data
 - [x] Backend: `DELETE /api/visualizations/{id}` — delete a visualization
-- [ ] Frontend: Visualizations list page — table of saved visualizations with name, chart type, source view, created date
-- [ ] Frontend: View button — render the visualization full-size with live data
-- [ ] Frontend: Auto-refresh mechanism — visualizations poll for new data at configurable intervals when displayed full-size
-- [ ] Frontend: Edit button — navigate to Phase 7 builder pre-filled
-- [ ] Frontend: Delete button with confirmation
-- [ ] Sidebar: Add "Visualizations" nav item
+- [x] Frontend: Visualizations list page — table of saved visualizations with name, chart type, source view, created/updated date (sortable); chart types show a clickable zoomed-out thumbnail whose data is fetched once and cached across tab navigation (no re-query when switching away and back), re-rendered on manual refresh; visualization names unique with name-conflict save/update flow mirroring data views
+- [x] Frontend: View button — render the visualization full-size with live data
+- [x] Frontend: Manual refresh button — re-fetch visualization data on demand (auto-refresh/polling intentionally dropped)
+- [x] Frontend: Edit button — navigate to Phase 7 builder pre-filled
+- [x] Frontend: Delete button with confirmation
+- [x] Sidebar: Add "Visualizations" nav item
 
 ---
 

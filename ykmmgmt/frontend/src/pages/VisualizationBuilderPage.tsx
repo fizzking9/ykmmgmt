@@ -1,8 +1,10 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useViews, useViewFullData } from "@/hooks/useViews";
 import {
   useVisualization,
+  useVisualizations,
   useCreateVisualization,
   useUpdateVisualization,
 } from "@/hooks/useVisualizations";
@@ -92,7 +94,7 @@ function isNumericColumn(values: unknown[]): boolean {
   return sample.every((v) => !isNaN(Number(v)));
 }
 
-function isDateColumn(values: unknown[]): boolean {
+export function isDateColumn(values: unknown[]): boolean {
   const sample = values.filter((v) => v != null).slice(0, 20);
   if (sample.length === 0) return false;
   return sample.every((v) => {
@@ -418,6 +420,7 @@ export default function VisualizationBuilderPage() {
 
   const { data: viewsList } = useViews();
   const { data: existingViz } = useVisualization(id);
+  const { data: vizList } = useVisualizations();
   const createViz = useCreateVisualization();
   const updateViz = useUpdateVisualization();
 
@@ -433,6 +436,13 @@ export default function VisualizationBuilderPage() {
 
   const previewRef = useRef<HTMLDivElement>(null);
   const loadedVizIdRef = useRef<string | null>(null);
+
+  // Name-conflict confirmation dialog (save acts as update when the name exists)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    targetId: string;
+    targetName: string;
+  } | null>(null);
 
   // Whether a PNG export is in progress (hides interactive controls like Brush)
   const [exporting, setExporting] = useState(false);
@@ -484,7 +494,7 @@ export default function VisualizationBuilderPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!state.name.trim()) {
       toast.error("请输入可视化名称");
       return;
@@ -499,39 +509,60 @@ export default function VisualizationBuilderPage() {
       _colorTheme: state.colorTheme,
       _numberFormat: state.numberFormat,
     };
+    const trimmedName = state.name.trim();
 
-    if (state.editingId) {
-      updateViz.mutate(
-        {
-          id: state.editingId,
-          name: state.name,
-          view_id: state.viewId,
-          chart_type: state.chartType,
-          config_json: configToSave,
-        },
-        {
-          onSuccess: () => {
-            toast.success("可视化更新成功");
-          },
-        },
-      );
-    } else {
-      createViz.mutate(
-        {
-          name: state.name,
-          view_id: state.viewId,
-          chart_type: state.chartType,
-          config_json: configToSave,
-        },
-        {
-          onSuccess: (data) => {
-            vizBuilder.setEditingId(data.id);
-            navigate(`/visualizations/builder/${data.id}`, { replace: true });
-          },
-        },
-      );
+    // Check if a visualization with this name already exists
+    const existingWithName = vizList?.find((v) => v.name === trimmedName);
+
+    if (existingWithName) {
+      // Name already exists — confirm modification
+      setConfirmDialog({
+        open: true,
+        targetId: existingWithName.id,
+        targetName: trimmedName,
+      });
+      return;
     }
-  }, [state, createViz, updateViz, navigate, vizBuilder]);
+
+    // Name doesn't exist — create new visualization
+    try {
+      const result = await createViz.mutateAsync({
+        name: trimmedName,
+        view_id: state.viewId,
+        chart_type: state.chartType,
+        config_json: configToSave,
+      });
+      vizBuilder.setEditingId(result.id);
+      loadedVizIdRef.current = result.id;
+      navigate(`/visualizations/builder/${result.id}`, { replace: true });
+    } catch {
+      // error handled by mutation
+    }
+  }, [state, createViz, navigate, vizBuilder, vizList]);
+
+  const handleConfirmUpdate = useCallback(async () => {
+    if (!confirmDialog || !state.viewId) return;
+    const configToSave = {
+      ...state.configJson,
+      _colorTheme: state.colorTheme,
+      _numberFormat: state.numberFormat,
+    };
+    try {
+      const result = await updateViz.mutateAsync({
+        id: confirmDialog.targetId,
+        name: state.name.trim(),
+        view_id: state.viewId,
+        chart_type: state.chartType,
+        config_json: configToSave,
+      });
+      setConfirmDialog(null);
+      vizBuilder.setEditingId(result.id);
+      loadedVizIdRef.current = result.id;
+      navigate(`/visualizations/builder/${result.id}`, { replace: true });
+    } catch {
+      // error handled by mutation
+    }
+  }, [confirmDialog, state, updateViz, navigate, vizBuilder]);
 
   const handleExportPng = useCallback(async () => {
     if (!previewRef.current) return;
@@ -910,7 +941,7 @@ export default function VisualizationBuilderPage() {
               ) : (
                 <Save className="mr-1 h-4 w-4" />
               )}
-              {state.editingId ? "更新" : "保存"}
+              保存
             </Button>
           </div>
         </div>
@@ -961,6 +992,39 @@ export default function VisualizationBuilderPage() {
               </Button>
             </div>
             <div className="flex-1 overflow-auto p-6">{renderPreview({ forModal: true })}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Name-conflict Confirmation Dialog */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setConfirmDialog(null)}
+          />
+          <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
+            <h3 className="text-lg font-semibold">确认修改</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              可视化名称「{confirmDialog.targetName}」已存在，是否修改该可视化？
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDialog(null)}
+                disabled={isSaving}
+              >
+                取消
+              </Button>
+              <Button onClick={handleConfirmUpdate} disabled={isSaving}>
+                {isSaving ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1 h-4 w-4" />
+                )}
+                修改
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -1681,6 +1745,33 @@ function PieChartConfig({
             </SelectContent>
           </Select>
         </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">聚合方式</label>
+          <Select
+            value={(config.aggregation as string) ?? "SUM"}
+            onValueChange={(v) => onUpdateKey("aggregation", v)}
+          >
+            <SelectTrigger>
+              <SelectValue>
+                {AGGREGATION_OPTIONS.find(
+                  (o) => o.value === ((config.aggregation as string) ?? "SUM"),
+                )?.label ?? "求和"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent
+              align="start"
+              sideOffset={4}
+              alignItemWithTrigger={false}
+              className="bg-background"
+            >
+              {AGGREGATION_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </CardContent>
     </Card>
   );
@@ -2108,7 +2199,7 @@ function samplePoints(points: Record<string, unknown>[]): Record<string, unknown
 
 const TABLE_PAGE_SIZE = 20;
 
-function TablePreview({
+export function TablePreview({
   config,
   columns,
   rows,
@@ -2217,7 +2308,7 @@ function TablePreview({
   );
 }
 
-function KpiCardPreview({
+export function KpiCardPreview({
   config,
   rows,
   numberFormat,
@@ -2428,7 +2519,7 @@ function KpiCardPreview({
   );
 }
 
-function BarChartPreview({
+export function BarChartPreview({
   config,
   rows,
   colors,
@@ -2572,7 +2663,7 @@ function BarChartPreview({
   );
 }
 
-function LineChartPreview({
+export function LineChartPreview({
   config,
   rows,
   colors,
@@ -2745,7 +2836,68 @@ function LineChartPreview({
 
 const PIE_MAX_SLICES = 8;
 
-function PieChartPreview({
+/** Slices below this share get no on-chart label — tiny slices stack their
+ *  labels into an unreadable blob; their values stay visible in the legend
+ *  and tooltip instead. */
+const PIE_MIN_LABEL_PERCENT = 0.04;
+
+interface PieDatum {
+  name: string;
+  value: number;
+  /** Stable color index so colors don't shift when slices are hidden. */
+  ci: number;
+}
+
+/** Pie legend: lists every category (incl. hidden) with its color swatch and
+ *  share of the visible total; clicking toggles slice visibility. */
+function PieLegendContent({
+  pieData,
+  colors,
+  hidden,
+  visibleTotal,
+  onToggle,
+}: {
+  pieData: PieDatum[];
+  colors: string[];
+  hidden: Record<string, boolean>;
+  visibleTotal: number;
+  onToggle: (name: string) => void;
+}) {
+  return (
+    <div className="flex max-h-full flex-col gap-1.5 overflow-y-auto pr-1">
+      {pieData.map((d) => {
+        const isHidden = !!hidden[d.name];
+        const pct =
+          !isHidden && visibleTotal > 0 ? ((d.value / visibleTotal) * 100).toFixed(1) : null;
+        return (
+          <button
+            key={d.name}
+            type="button"
+            onClick={() => onToggle(d.name)}
+            className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 text-left"
+            title={isHidden ? "点击显示" : "点击隐藏"}
+          >
+            <span
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{ backgroundColor: isHidden ? "#94a3b8" : colors[d.ci % colors.length] }}
+            />
+            <span
+              className="truncate"
+              style={
+                isHidden ? { color: "#94a3b8", textDecoration: "line-through" } : undefined
+              }
+            >
+              {d.name}
+              {pct != null ? ` ${pct}%` : ""}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function PieChartPreview({
   config,
   rows,
   colors,
@@ -2759,24 +2911,40 @@ function PieChartPreview({
   const labelColumn = config.label_column as string;
   const valueColumn = config.value_column as string;
   const title = config.title as string;
+  const aggregation = (config.aggregation as string) || "SUM";
+  const { hidden, toggle } = useSeriesToggle();
 
   const pieData = useMemo(() => {
     if (!labelColumn || !valueColumn || !rows.length) return [];
-    const aggregated = new Map<string, number>();
+    // Group raw values per label, then apply the chosen aggregation
+    const grouped = new Map<string, number[]>();
     for (const row of rows) {
       const label = String(row[labelColumn] ?? "未知");
-      const val = Number(row[valueColumn]) || 0;
-      aggregated.set(label, (aggregated.get(label) ?? 0) + val);
+      const arr = grouped.get(label) ?? [];
+      arr.push(Number(row[valueColumn]) || 0);
+      grouped.set(label, arr);
     }
-    const sorted = Array.from(aggregated.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    let aggregated = Array.from(grouped.entries()).map(([name, values]) => ({
+      name,
+      value: aggregation === "COUNT" ? values.length : aggregateValues(values, aggregation),
+    }));
+    aggregated.sort((a, b) => b.value - a.value);
     // Keep the chart readable: top-N slices, the rest merged into 其他
-    if (sorted.length <= PIE_MAX_SLICES) return sorted;
-    const top = sorted.slice(0, PIE_MAX_SLICES);
-    const rest = sorted.slice(PIE_MAX_SLICES).reduce((s, d) => s + d.value, 0);
-    return [...top, { name: "其他", value: rest }];
-  }, [rows, labelColumn, valueColumn]);
+    if (aggregated.length > PIE_MAX_SLICES) {
+      const top = aggregated.slice(0, PIE_MAX_SLICES);
+      const rest = aggregated.slice(PIE_MAX_SLICES).reduce((s, d) => s + d.value, 0);
+      aggregated = [...top, { name: "其他", value: rest }];
+    }
+    return aggregated.map((d, i) => ({ ...d, ci: i }));
+  }, [rows, labelColumn, valueColumn, aggregation]);
+
+  // Hidden slices are excluded entirely so percentages recalculate over the
+  // visible slices
+  const visibleData = useMemo(() => pieData.filter((d) => !hidden[d.name]), [pieData, hidden]);
+  const visibleTotal = useMemo(
+    () => visibleData.reduce((s, d) => s + d.value, 0),
+    [visibleData],
+  );
 
   if (!labelColumn || !valueColumn) {
     return (
@@ -2792,19 +2960,21 @@ function PieChartPreview({
       <ResponsiveContainer width="100%" height={height}>
         <RePieChart>
           <Pie
-            data={pieData}
+            data={visibleData}
             dataKey="value"
             nameKey="name"
             cx="42%"
             cy="50%"
             outerRadius="80%"
-            label={({ percent }: { percent?: number | string }) =>
-              `${(Number(percent ?? 0) * 100).toFixed(1)}%`
-            }
+            label={({ percent }: { percent?: number | string }) => {
+              const p = Number(percent ?? 0);
+              // Tiny slices get no label — values are shown in the legend
+              return p >= PIE_MIN_LABEL_PERCENT ? `${(p * 100).toFixed(1)}%` : "";
+            }}
             labelLine={{ stroke: AXIS_LINE_STROKE }}
           >
-            {pieData.map((_, i) => (
-              <Cell key={i} fill={colors[i % colors.length]} />
+            {visibleData.map((d) => (
+              <Cell key={d.name} fill={colors[d.ci % colors.length]} />
             ))}
           </Pie>
           <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => compactNumber(v)} />
@@ -2812,8 +2982,16 @@ function PieChartPreview({
             layout="vertical"
             align="right"
             verticalAlign="middle"
-            iconSize={10}
             wrapperStyle={{ fontSize: 12 }}
+            content={
+              <PieLegendContent
+                pieData={pieData}
+                colors={colors}
+                hidden={hidden}
+                visibleTotal={visibleTotal}
+                onToggle={toggle}
+              />
+            }
           />
         </RePieChart>
       </ResponsiveContainer>
@@ -2909,7 +3087,7 @@ function ScatterLegendContent({
   );
 }
 
-function ScatterChartPreview({
+export function ScatterChartPreview({
   config,
   rows,
   colors,
@@ -3145,7 +3323,7 @@ function OverlappedHistogramBar(props: {
   );
 }
 
-function HistogramChartPreview({
+export function HistogramChartPreview({
   config,
   rows,
   colors,
@@ -3340,7 +3518,7 @@ function BoxplotShape(props: {
   );
 }
 
-function BoxplotChartPreview({
+export function BoxplotChartPreview({
   config,
   rows,
   colors,
