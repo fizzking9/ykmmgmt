@@ -22,6 +22,8 @@ export interface FilterSpec {
   column: string;
   operator: string;
   value: unknown;
+  date_start?: string | null;
+  date_end?: string | null;
 }
 
 export interface AggregationSpec {
@@ -39,12 +41,19 @@ export interface ComputedOperand {
 
 export interface ComputedColumnSpec {
   alias: string;
-  expression_type: "arithmetic" | "datetime_shift";
+  expression_type: "arithmetic" | "datetime_shift" | "datetime_trunc";
   operands?: ComputedOperand[];
   operators?: string[];
   base_column?: ComputedOperand | null;
   shift_value?: string | null;
   shift_unit?: "days" | "months" | "years" | null;
+  trunc_column?: ComputedOperand | null;
+  trunc_unit?: "year" | "quarter" | "month" | "week" | "day" | "hour" | "minute" | null;
+}
+
+export interface OrderSpec {
+  column: string;
+  direction: "asc" | "desc";
 }
 
 export interface ViewConfig {
@@ -56,6 +65,8 @@ export interface ViewConfig {
   filters: FilterSpec[];
   group_by: string[];
   aggregations: AggregationSpec[];
+  order_by: OrderSpec[];
+  limit: number | null;
 }
 
 export interface ViewResponse {
@@ -168,12 +179,18 @@ async function deleteView(id: string): Promise<void> {
   }
 }
 
-async function fetchViewData(
-  id: string,
-  page: number,
-  size: number,
-): Promise<ViewDataResponse> {
+async function fetchViewData(id: string, page: number, size: number): Promise<ViewDataResponse> {
   const params = new URLSearchParams({ page: String(page), size: String(size) });
+  const res = await fetch(`/api/views/${id}/data?${params}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "获取视图数据失败" }));
+    throw new Error(err.detail || "获取视图数据失败");
+  }
+  return res.json();
+}
+
+async function fetchViewFullData(id: string): Promise<ViewDataResponse> {
+  const params = new URLSearchParams({ page: "1", size: "0" });
   const res = await fetch(`/api/views/${id}/data?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "获取视图数据失败" }));
@@ -223,8 +240,15 @@ export function useCreateView() {
 export function useUpdateView() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string | null; config_json?: ViewConfig }) =>
-      updateView(id, data),
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name?: string;
+      description?: string | null;
+      config_json?: ViewConfig;
+    }) => updateView(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["views"] });
       toast.success("视图更新成功");
@@ -249,14 +273,19 @@ export function useDeleteView() {
   });
 }
 
-export function useViewData(
-  id: string | undefined,
-  page: number,
-  size: number,
-) {
+export function useViewData(id: string | undefined, page: number, size: number) {
   return useQuery({
     queryKey: ["viewData", id, page, size],
     queryFn: () => fetchViewData(id!, page, size),
+    enabled: !!id,
+    staleTime: 10_000,
+  });
+}
+
+export function useViewFullData(id: string | undefined) {
+  return useQuery({
+    queryKey: ["viewFullData", id],
+    queryFn: () => fetchViewFullData(id!),
     enabled: !!id,
     staleTime: 10_000,
   });

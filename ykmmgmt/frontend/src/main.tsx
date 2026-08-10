@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { UploadProvider } from "@/contexts/UploadContext";
 import { DataBrowserProvider } from "@/contexts/DataBrowserContext";
 import { ViewBuilderProvider } from "@/contexts/ViewBuilderContext";
+import { VisualizationBuilderProvider } from "@/contexts/VisualizationBuilderContext";
 import App from "./App";
 import "./index.css";
 
@@ -24,7 +25,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <UploadProvider>
           <DataBrowserProvider>
             <ViewBuilderProvider>
-              <App />
+              <VisualizationBuilderProvider>
+                <App />
+              </VisualizationBuilderProvider>
             </ViewBuilderProvider>
           </DataBrowserProvider>
         </UploadProvider>

@@ -33,15 +33,18 @@ class JoinSpec(BaseModel):
 class FilterSpec(BaseModel):
     """A single filter condition."""
 
-    column: str = Field(..., description="Fully qualified column (table.column)")
+    column: str = Field(..., description="Fully qualified column (table.column) or computed column alias")
     operator: str = Field(
-        ...,
+        default="eq",
         description=(
             "eq, neq, gt, gte, lt, lte, contains, "
-            "startswith, endswith, is_null, is_not_null"
+            "startswith, endswith, is_null, is_not_null. "
+            "Ignored when date_start or date_end is set."
         ),
     )
-    value: Any = Field(None, description="Filter value (ignored for is_null/is_not_null)")
+    value: Any = Field(None, description="Filter value (ignored for is_null/is_not_null and date ranges)")
+    date_start: str | None = Field(None, description="Date range start (ISO date string, inclusive)")
+    date_end: str | None = Field(None, description="Date range end (ISO date string, inclusive)")
 
 
 class AggregationSpec(BaseModel):
@@ -65,8 +68,12 @@ class ComputedColumnSpec(BaseModel):
     """A computed / derived column expression."""
 
     alias: str = Field(..., min_length=1, description="Output column alias (required)")
-    expression_type: Literal["arithmetic", "datetime_shift"] = Field(
-        ..., description="'arithmetic' (numeric +-*/) or 'datetime_shift' (date ± interval)"
+    expression_type: Literal["arithmetic", "datetime_shift", "datetime_trunc"] = Field(
+        ...,
+        description=(
+            "'arithmetic' (numeric +-*/), 'datetime_shift' (date ± interval), "
+            "or 'datetime_trunc' (extract date part)"
+        ),
     )
     # ── Arithmetic fields (chained) ──
     operands: list[ComputedOperand] = Field(default_factory=list, description="2+ operands for arithmetic")
@@ -75,6 +82,16 @@ class ComputedColumnSpec(BaseModel):
     base_column: ComputedOperand | None = None
     shift_value: str | None = None
     shift_unit: Literal["days", "months", "years"] | None = None
+    # ── Datetime trunc fields ──
+    trunc_column: ComputedOperand | None = None
+    trunc_unit: Literal["year", "quarter", "month", "week", "day", "hour", "minute"] | None = None
+
+
+class OrderSpec(BaseModel):
+    """A single ORDER BY specification."""
+
+    column: str = Field(..., description="Column name or computed column alias")
+    direction: Literal["asc", "desc"] = Field("asc", description="Sort direction")
 
 
 class ViewConfig(BaseModel):
@@ -91,6 +108,8 @@ class ViewConfig(BaseModel):
     filters: list[FilterSpec] = Field(default_factory=list)
     group_by: list[str] = Field(default_factory=list, description="Column names for GROUP BY")
     aggregations: list[AggregationSpec] = Field(default_factory=list)
+    order_by: list[OrderSpec] = Field(default_factory=list, description="Sort columns")
+    limit: int | None = Field(None, ge=0, description="Maximum rows to return (0 or null = no limit)")
 
 
 # ── CRUD schemas ────────────────────────────────────────────────────────────

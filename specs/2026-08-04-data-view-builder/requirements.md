@@ -14,8 +14,10 @@ Deliver a Data View Builder where users first pick a single source table, option
 - Frontend: Column picker with editable aliases (user can rename output columns)
 - Frontend: Type-aware filter builder — operators and value inputs adapt to column type (text/number/date/datetime)
 - Frontend: Grouping & aggregation builder (SUM/COUNT/AVG/MIN/MAX) with editable aliases
-- Frontend: Computed columns builder — arithmetic (+, -, *, /) between numeric columns/constants and datetime shifts (days/months/years) with mandatory output alias
+- Frontend: Computed columns builder — arithmetic (+, -, *, /) between numeric columns/constants, datetime shifts (days/months/years), and date truncation (year/quarter/month/week/day/hour/minute) with mandatory output alias
 - Frontend: Live preview (up to 20 rows) with tabbed interface: 数据预览 | SQL语句
+- Frontend: Date range filter for date/datetime columns — start/end date pickers replace operator-based filtering, one-sided ranges supported
+- Frontend: ORDER BY and LIMIT section — add multiple sort columns with asc/desc direction, optional row count limit
 - Frontend: Save (新建/更新) with client-side validation
 
 **Explicitly excluded:**
@@ -24,7 +26,7 @@ Deliver a Data View Builder where users first pick a single source table, option
 - Deleting views (Phase 6)
 - Sidebar navigation item for views (Phase 6)
 - Charting or visualization (Phase 7)
-- ORDER BY clause in SQL generation (sorting is a display concern, handled in Phase 6)
+- ORDER BY clause in SQL generation (implemented with aggregation alias support)
 - HAVING clause (aggregation filtering not in scope)
 - DISTINCT or subqueries
 - Export of view SQL or results
@@ -42,7 +44,7 @@ YKMMgmt is an internal business tool for financial and operational data manageme
 | Parameterized SQL | Named placeholders (`:param_name`) | Prevents SQL injection. Values are never interpolated into the SQL string. The generated SQL is safe to review and execute. |
 | SQL validation | `EXPLAIN` on generation | Catches syntax errors, missing tables/columns, and type mismatches at save time rather than at execution time. Fast and safe — EXPLAIN does not execute the query. |
 | Join flexibility | No hard cap on table count | User requested flexible number of tables. The builder validates that all join references are valid; PostgreSQL's own limits apply naturally. |
-| Filter operators | 11 operators covering comparison, text matching, and null checks | Covers all common WHERE clause patterns. 包含/开头是/结尾是 use SQL LIKE; null operators handle the NULL = NULL problem correctly. |
+| Filter operators | 11 operators covering comparison, text matching, and null checks. Date/datetime columns use a date range picker instead of operator-based filtering. | Covers all common WHERE clause patterns. 包含/开头是/结尾是 use SQL LIKE; null operators handle the NULL = NULL problem correctly. Date ranges support start-only, end-only, or both. |
 | Grouping & aggregation interaction | GROUP BY columns must be selected in the column picker; non-aggregated, non-grouped columns are dropped from SELECT | Standard SQL semantics. Prevents confusing results where MySQL would silently pick arbitrary values. |
 | Preview endpoint | Separate `POST /api/views/preview`, does not store anything | Separation of concerns: preview is transient exploration, save is persistent. Avoids creating orphaned views during experimentation. |
 | Default column selection | `SELECT *` if no columns explicitly picked | Simplifies initial exploration. Users can then refine by picking specific columns. |
@@ -51,7 +53,7 @@ YKMMgmt is an internal business tool for financial and operational data manageme
 | Column renaming | Editable alias inputs on selected columns and aggregation outputs | Users control output column names for readability. Aliases flow into the generated SQL `AS` clause and appear in the preview table headers. |
 | Preview row limit | 20 rows | Sufficient to verify join logic and aggregation results. Keeps the preview panel compact and fast. |
 | Preview SQL display | Tabbed interface: 数据预览 (default) | SQL语句 | Saves vertical space compared to inline display. Users switch tabs to inspect the generated SQL when needed.
-| Computed columns | Simple binary expressions: arithmetic on numeric columns/constants via `::NUMERIC` casts, datetime shifts via PostgreSQL `INTERVAL`. Aliases are mandatory — computed columns appear as selectable options in filters, GROUP BY, and aggregations. | Covers the most common derived-column use cases (e.g. `total = amount + tax`, `due_date = created_at + 30 days`) without introducing a full expression language. Mandatory aliases ensure predictable output column names. |
+| Computed columns | Three expression types: arithmetic on numeric columns/constants via `::NUMERIC` casts (chained, COALESCE-safe), datetime shifts via PostgreSQL `INTERVAL`, and date part extraction via `DATE_TRUNC` (year/quarter/month/week/day/hour/minute). Aliases are mandatory — computed columns appear as selectable options in filters, GROUP BY, ORDER BY, and aggregations. | Covers the most common derived-column use cases (e.g. `total = amount + tax`, `due_date = created_at + 30 days`, `order_year = DATE_TRUNC('year', created_at)`) without introducing a full expression language. Mandatory aliases ensure predictable output column names. |
 
 ## Constraints
 

@@ -1,12 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useMemo,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 import type { JoinSpec, PreviewResponse } from "@/hooks/useViews";
 
 // ── Column alias ──────────────────────────────────────────────────────────
@@ -23,6 +16,8 @@ export interface FilterItem {
   column: string;
   operator: string;
   value: string;
+  dateStart?: string;
+  dateEnd?: string;
 }
 
 // ── Aggregation ───────────────────────────────────────────────────────────
@@ -44,7 +39,7 @@ export interface ComputedOperandItem {
 
 export interface ComputedColumnItem {
   alias: string;
-  expression_type: "arithmetic" | "datetime_shift";
+  expression_type: "arithmetic" | "datetime_shift" | "datetime_trunc";
   // Arithmetic (chained)
   operands: ComputedOperandItem[];
   operators: string[];
@@ -53,6 +48,15 @@ export interface ComputedColumnItem {
   base_column: string;
   shift_value: string;
   shift_unit: string;
+  // Datetime trunc
+  trunc_table: string;
+  trunc_column: string;
+  trunc_unit: string;
+}
+
+export interface OrderItem {
+  column: string;
+  direction: "asc" | "desc";
 }
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -68,6 +72,8 @@ export interface ViewBuilderState {
   aggregations: AggregationItem[];
   computedColumns: ComputedColumnItem[];
   selectedComputedColumns: string[];
+  orderBy: OrderItem[];
+  limit: number | null;
   previewResult: PreviewResponse | null;
   previewTab: "data" | "sql";
   editingId: string | null;
@@ -87,6 +93,8 @@ export interface ViewBuilderContextValue {
   setAggregations: (aggs: AggregationItem[]) => void;
   setComputedColumns: (cols: ComputedColumnItem[]) => void;
   setSelectedComputedColumns: (cols: string[]) => void;
+  setOrderBy: (orders: OrderItem[]) => void;
+  setLimit: (limit: number | null) => void;
   setPreviewResult: (result: PreviewResponse | null) => void;
   setPreviewTab: (tab: "data" | "sql") => void;
   setEditingId: (id: string | null) => void;
@@ -109,6 +117,8 @@ const INITIAL_STATE: ViewBuilderState = {
   aggregations: [],
   computedColumns: [],
   selectedComputedColumns: [],
+  orderBy: [],
+  limit: null,
   previewResult: null,
   previewTab: "data",
   editingId: null,
@@ -147,6 +157,12 @@ export function ViewBuilderProvider({ children }: { children: ReactNode }) {
   const setSelectedComputedColumns = useCallback((cols: string[]) => {
     setState((prev) => ({ ...prev, selectedComputedColumns: cols, previewResult: null }));
   }, []);
+  const setOrderBy = useCallback((orders: OrderItem[]) => {
+    setState((prev) => ({ ...prev, orderBy: orders, previewResult: null }));
+  }, []);
+  const setLimit = useCallback((limit: number | null) => {
+    setState((prev) => ({ ...prev, limit, previewResult: null }));
+  }, []);
   const setPreviewResult = useCallback((result: PreviewResponse | null) => {
     setState((prev) => ({ ...prev, previewResult: result }));
   }, []);
@@ -170,37 +186,57 @@ export function ViewBuilderProvider({ children }: { children: ReactNode }) {
       aggregations: [],
       computedColumns: [],
       selectedComputedColumns: [],
+      orderBy: [],
+      limit: null,
       previewResult: null,
       editingId: null,
     }));
   }, []);
 
-  const value = useMemo(() => ({
-    state,
-    setName,
-    setDescription,
-    setFromTables,
-    setJoins,
-    setColumns,
-    setFilters,
-    setGroupBy,
-    setAggregations,
-    setComputedColumns,
-    setSelectedComputedColumns,
-    setPreviewResult,
-    setPreviewTab,
-    setEditingId,
-    resetState,
-    clearConfig,
-  }), [state, setName, setDescription, setFromTables, setJoins, setColumns, setFilters, setGroupBy, setAggregations, setComputedColumns, setSelectedComputedColumns, setPreviewResult, setPreviewTab, setEditingId, resetState, clearConfig]);
-
-  return (
-    <ViewBuilderContext.Provider
-      value={value}
-    >
-      {children}
-    </ViewBuilderContext.Provider>
+  const value = useMemo(
+    () => ({
+      state,
+      setName,
+      setDescription,
+      setFromTables,
+      setJoins,
+      setColumns,
+      setFilters,
+      setGroupBy,
+      setAggregations,
+      setComputedColumns,
+      setSelectedComputedColumns,
+      setOrderBy,
+      setLimit,
+      setPreviewResult,
+      setPreviewTab,
+      setEditingId,
+      resetState,
+      clearConfig,
+    }),
+    [
+      state,
+      setName,
+      setDescription,
+      setFromTables,
+      setJoins,
+      setColumns,
+      setFilters,
+      setGroupBy,
+      setAggregations,
+      setComputedColumns,
+      setSelectedComputedColumns,
+      setOrderBy,
+      setLimit,
+      setPreviewResult,
+      setPreviewTab,
+      setEditingId,
+      resetState,
+      clearConfig,
+    ],
   );
+
+  return <ViewBuilderContext.Provider value={value}>{children}</ViewBuilderContext.Provider>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────
@@ -208,9 +244,7 @@ export function ViewBuilderProvider({ children }: { children: ReactNode }) {
 export function useViewBuilderContext() {
   const ctx = useContext(ViewBuilderContext);
   if (!ctx) {
-    throw new Error(
-      "useViewBuilderContext must be used within ViewBuilderProvider",
-    );
+    throw new Error("useViewBuilderContext must be used within ViewBuilderProvider");
   }
   return ctx;
 }

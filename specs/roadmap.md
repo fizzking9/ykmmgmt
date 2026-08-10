@@ -142,16 +142,18 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 **Goal:** Build and save visualizations by selecting a data view, a chart type, and configuring it.
 
-- [ ] Backend: Visualization model — `name`, `view_id` (FK), `chart_type` (table/kpi_card/bar/line/pie/scatter), `config_json` (axis mappings, colors, labels, etc.), `created_at`, `updated_at`
-- [ ] Backend: `POST /api/visualizations` — create a visualization
-- [ ] Backend: `PUT /api/visualizations/{id}` — update a visualization
-- [ ] Frontend: View selector — pick from saved views (Phase 6) to use as data source
-- [ ] Frontend: Chart type selector — Table, KPI Card, Bar Chart, Line Chart, Pie Chart, Scatter Plot
-- [ ] Frontend: Configuration panel — per chart type:
+- [x] Backend: Visualization model — `name`, `view_id` (FK), `chart_type` (table/kpi_card/bar/line/pie/scatter/histogram/boxplot), `config_json` (axis mappings, colors, labels, etc.), `created_at`, `updated_at`
+- [x] Backend: `POST /api/visualizations` — create a visualization
+- [x] Backend: `PUT /api/visualizations/{id}` — update a visualization
+- [x] Frontend: View selector — pick from saved views (Phase 6) to use as data source
+- [x] Frontend: Chart type selector — Table, KPI Card, Bar Chart, Line Chart, Pie Chart, Scatter Plot, Histogram, Boxplot
+- [x] Frontend: Configuration panel — per chart type:
   - **Table:** column visibility toggles, sort column
   - **KPI Card:** value column, label, optional comparison/target
-  - **Bar / Line / Pie / Scatter:** X-axis column, Y-axis column(s), color/group-by column
-- [ ] Frontend: Live preview — render the visualization with sample data from the selected view
+  - **Bar / Line / Pie / Scatter:** X-axis column, Y-axis column(s), color/group-by column, title
+  - **Histogram:** numeric column(s) with overlaid semi-transparent bins, configurable bin count
+  - **Boxplot:** numeric value column, optional categorical split, five-number summary
+- [x] Frontend: Live preview — render the visualization with sample data from the selected view
 
 ---
 
@@ -159,11 +161,12 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 **Goal:** List, view, edit, and delete saved visualizations.
 
-- [ ] Backend: `GET /api/visualizations` — list all saved visualizations with metadata
-- [ ] Backend: `GET /api/visualizations/{id}` — full visualization definition + rendered data
-- [ ] Backend: `DELETE /api/visualizations/{id}` — delete a visualization
+- [x] Backend: `GET /api/visualizations` — list all saved visualizations with metadata
+- [x] Backend: `GET /api/visualizations/{id}` — full visualization definition + rendered data
+- [x] Backend: `DELETE /api/visualizations/{id}` — delete a visualization
 - [ ] Frontend: Visualizations list page — table of saved visualizations with name, chart type, source view, created date
 - [ ] Frontend: View button — render the visualization full-size with live data
+- [ ] Frontend: Auto-refresh mechanism — visualizations poll for new data at configurable intervals when displayed full-size
 - [ ] Frontend: Edit button — navigate to Phase 7 builder pre-filled
 - [ ] Frontend: Delete button with confirmation
 - [ ] Sidebar: Add "Visualizations" nav item

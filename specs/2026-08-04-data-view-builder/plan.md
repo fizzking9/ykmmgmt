@@ -36,7 +36,9 @@ Numbered task groups in implementation order. Each group is independently verifi
 
 9c. Datetime shift expressions: use PostgreSQL `INTERVAL` syntax — `(base_column + INTERVAL 'N unit')` or subtraction for negative values. Unit normalization: days→day, months→month, years→year.
 
-9d. Computed columns in SELECT: appended as `expression AS alias` items in `_build_select()`. Computed columns in WHERE: resolved by alias lookup in `_build_filter_condition()` (embed the full expression, not the alias). Computed columns in GROUP BY: referenced by alias (PostgreSQL allows this).
+9d. Datetime truncation expressions: use PostgreSQL `DATE_TRUNC` — `DATE_TRUNC('unit', column)`. Supported units: year, quarter, month, week, day, hour, minute. Missing `trunc_column` or `trunc_unit` raises `SQLBuildError`.
+
+9e. Computed columns in SELECT: appended as `expression AS alias` items in `_build_select()`. Computed columns in WHERE: resolved by alias lookup in `_build_filter_condition()` (embed the full expression, not the alias). Computed columns in GROUP BY and ORDER BY: referenced by alias (PostgreSQL allows this).
 
 ---
 
@@ -72,19 +74,19 @@ Numbered task groups in implementation order. Each group is independently verifi
 
 18. Implement column picker: after the source table is selected, fetch its schema and display a checkbox list of its columns. Options are formatted as `表名.列名` using their Chinese aliases (e.g. `退费单.退费单号`, `服务退款工单.工单ID`). When joins are added, also show columns from joined tables in the same list with their respective table prefixes. Each selected column has an editable alias input (renaming the column in the output). Internal columns (id, imported_at, content_hash) are hidden from the list. If no columns are selected, defaults to `SELECT *`.
 
-19. Implement type-aware filter builder: reuse the multi-row filter pattern from Data Browser but make operators and value inputs context-sensitive based on the selected column's type:
+19. Implement type-aware filter builder: reuse the multi-row filter pattern from Data Browser but make the UI context-sensitive based on the selected column's type:
    - **Text columns:** operators 等于/不等于/包含/开头是/结尾是/为空/不为空, value input is a text field.
    - **Numeric columns:** operators 等于/不等于/大于/大于等于/小于/小于等于/为空/不为空, value input is a number field.
-   - **Date/datetime columns:** operators 等于/不等于/大于/大于等于/小于/小于等于/为空/不为空, value input is a date picker (for date columns) or datetime picker (for datetime columns).
-   - Operator dropdown updates dynamically when the column selection changes. "添加筛选条件" button adds rows. All filters AND together.
+   - **Date/datetime columns:** **No operators** — replaced by a date range picker with start date and end date inputs. Both fields optional (one-sided ranges supported). Back end uses `date_start`/`date_end` fields with `>= :start` and `< :end::DATE + INTERVAL '1 day'` (inclusive end date).
+   - "添加筛选条件" button adds rows. All filters AND together. Date range conditions combine with operator-based filters via AND.
 
 ---
 
 ### Group 7a — Frontend: Computed Columns Builder
 
-20a. Add computed columns section UI as a Card between the column picker and filter sections. Each row has: expression type selector (算术运算/日期偏移), operands (column picker or number input), operator selector (for arithmetic), datetime shift fields (base column, shift amount, unit), and mandatory alias input. "添加计算列" button adds rows; X button removes.
+20a. Add computed columns section UI as a Card between the column picker and filter sections. Expression type selector offers three options: 算术运算 (arithmetic), 日期偏移 (datetime_shift), and 日期截取 (datetime_trunc). Arithmetic: chained operands (column pickers filtered to numeric, or constant number inputs) with +/−/×/÷ operators between them. Datetime shift: base date column picker (filtered to date columns), offset amount, unit (天/月/年). Datetime trunc: base date column picker, granularity selector (年/季度/月/周/天/小时/分钟). Mandatory alias input on every expression. "添加计算列" button adds rows; X button removes.
 
-20b. Add `ComputedColumnItem` type to `ViewBuilderContext` with all UI fields flat (left_type, left_table, left_column, left_value, operator, right_*, base_*, shift_*). Add `computedColumns` state and `setComputedColumns` setter.
+20b. Add `ComputedColumnItem` type to `ViewBuilderContext` with flat UI fields: expression_type, operands/operators (arithmetic), base_table/base_column/shift_value/shift_unit (datetime_shift), trunc_table/trunc_column/trunc_unit (datetime_trunc), and mandatory alias. Add `computedColumns` state and `setComputedColumns` setter.
 
 20c. Wire computed columns into `columnOptions` (as "计算: alias" entries) so they appear as selectable in filter, GROUP BY, and aggregation column pickers.
 
@@ -95,6 +97,16 @@ Numbered task groups in implementation order. Each group is independently verifi
 21. Implement save button: compiles all config (tables, joins, columns, filters, groupings, aggregations) into JSON. Calls `POST /api/views` (create) or `PUT /api/views/{id}` (update). Shows success/error toast. Validates that view has a name before saving. "保存" (save) and "保存并预览" (save and preview) buttons.
 
 22. Add a name and description input at the top of the builder. Name is required (validated client-side before save).
+
+---
+
+### Group 7c — Frontend: ORDER BY & LIMIT
+
+20e. Add "排序与限制" Card section between the aggregation section and save buttons. ORDER BY rows: each with a column picker (all columns + computed column aliases + aggregation aliases) and direction selector (升序/降序). "添加排序" button adds rows; X button removes. Multiple sort columns supported — order within the list determines SQL ordering.
+
+20f. LIMIT input: numeric field accepting a positive integer row count. Empty/zero treated as no limit. Applied as `LIMIT n` in generated SQL.
+
+20g. Backend: `_build_order_by()` resolves columns, computed column aliases, and aggregation aliases. `_build_limit()` emits `LIMIT n` for positive values. `build(apply_limit=True)` includes both; `build(apply_limit=False)` excludes them (used for total-count queries).
 
 ---
 

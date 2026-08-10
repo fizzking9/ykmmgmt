@@ -371,9 +371,39 @@ Manual verification:
 
 ---
 
+## Gate 23 — Datetime truncation computed column
+
+**Test:** `pytest tests/test_view_sql_builder.py -k datetime_trunc`
+
+**Expected:** `DATE_TRUNC('unit', column)` SQL is generated for year, month, day units. Missing trunc_column or trunc_unit raises `SQLBuildError`.
+
+**Status:** ✅ PASS — 5/5 datetime_trunc tests pass.
+
+---
+
+## Gate 24 — Date range filter for datetime columns
+
+**Test:** `pytest tests/test_view_sql_builder.py -k date_range`
+
+**Expected:** Date columns use `date_start`/`date_end` fields instead of operator/value. Both-picker, start-only, and end-only ranges produce correct SQL with parameterized dates. End date uses `< param::DATE + INTERVAL '1 day'` for inclusive semantics.
+
+**Status:** ✅ PASS — 4/4 date_range tests pass.
+
+---
+
+## Gate 25 — ORDER BY and LIMIT
+
+**Test:** `pytest tests/test_view_sql_builder.py -k order_by` and `-k limit`
+
+**Expected:** ORDER BY generates ASC/DESC sorts on columns, computed column aliases, and aggregation aliases. LIMIT applies numeric cap. Zero/null limit skipped. `apply_limit=False` skips ORDER BY + LIMIT for counting.
+
+**Status:** ✅ PASS — 8/8 order_by/limit tests pass.
+
+---
+
 ## Merge Checklist
 
-- [x] All 22 gates pass on a clean checkout *(all gates verified ✅)*
+- [x] All 25 gates pass on a clean checkout *(all gates verified ✅)*
 - [x] `views` table exists in PostgreSQL with correct columns *(Gate 6: migration `d8b69a4de309` at head)*
 - [x] `POST /api/views` creates views with generated SQL, rejects invalid table/column references *(Gate 7–8)*
 - [x] `PUT /api/views/{id}` updates name-only without regenerating SQL; regenerates SQL on config change *(Gate 13–14)*

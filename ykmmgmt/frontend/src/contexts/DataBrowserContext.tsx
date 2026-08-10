@@ -1,11 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
 export interface ColumnFilter {
   col: string;
@@ -92,17 +86,12 @@ export function DataBrowserProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const updateColumnFilter = useCallback(
-    (index: number, patch: Partial<ColumnFilter>) => {
-      setState((prev) => {
-        const updated = prev.columnFilters.map((f, i) =>
-          i === index ? { ...f, ...patch } : f,
-        );
-        return { ...prev, columnFilters: updated };
-      });
-    },
-    [],
-  );
+  const updateColumnFilter = useCallback((index: number, patch: Partial<ColumnFilter>) => {
+    setState((prev) => {
+      const updated = prev.columnFilters.map((f, i) => (i === index ? { ...f, ...patch } : f));
+      return { ...prev, columnFilters: updated };
+    });
+  }, []);
 
   const removeColumnFilter = useCallback((index: number) => {
     setState((prev) => ({
@@ -169,9 +158,7 @@ export function DataBrowserProvider({ children }: { children: ReactNode }) {
 export function useDataBrowserContext() {
   const ctx = useContext(DataBrowserContext);
   if (!ctx) {
-    throw new Error(
-      "useDataBrowserContext must be used within DataBrowserProvider",
-    );
+    throw new Error("useDataBrowserContext must be used within DataBrowserProvider");
   }
   return ctx;
 }

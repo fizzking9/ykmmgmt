@@ -103,9 +103,7 @@ function EmptyState() {
     <div className="rounded-md bg-muted/30 p-16 text-center">
       <Database className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
       <p className="text-lg text-muted-foreground">暂无数据</p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        当前筛选条件下没有匹配的数据
-      </p>
+      <p className="mt-1 text-sm text-muted-foreground">当前筛选条件下没有匹配的数据</p>
     </div>
   );
 }
@@ -115,9 +113,7 @@ function NoTableSelected() {
     <div className="rounded-md bg-muted/30 p-16 text-center">
       <Database className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
       <p className="text-lg text-muted-foreground">请选择一个数据表</p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        从左侧列表中选择要浏览的数据表
-      </p>
+      <p className="mt-1 text-sm text-muted-foreground">从左侧列表中选择要浏览的数据表</p>
     </div>
   );
 }
@@ -139,7 +135,16 @@ export default function DataBrowserPage() {
     setSortDir,
     clearFilter,
   } = useDataBrowserContext();
-  const { selectedTable, page, filterCol, filterStart, filterEnd, columnFilters, sortCol, sortDir } = state;
+  const {
+    selectedTable,
+    page,
+    filterCol,
+    filterStart,
+    filterEnd,
+    columnFilters,
+    sortCol,
+    sortDir,
+  } = state;
 
   const { data: tables, isLoading: tablesLoading } = useTables();
 
@@ -176,10 +181,7 @@ export default function DataBrowserPage() {
   }, [columnFilters.length]);
 
   // Schema query
-  const {
-    data: schema,
-    isLoading: schemaLoading,
-  } = useQuery({
+  const { data: schema, isLoading: schemaLoading } = useQuery({
     queryKey: ["tableSchema", selectedTable],
     queryFn: () => fetchSchema(selectedTable),
     enabled: !!selectedTable,
@@ -213,7 +215,17 @@ export default function DataBrowserPage() {
       sortDir,
     ],
     queryFn: () =>
-      fetchData(selectedTable, page, 20, activeFilterCol, activeStart, activeEnd, columnFilters, sortCol, sortDir),
+      fetchData(
+        selectedTable,
+        page,
+        20,
+        activeFilterCol,
+        activeStart,
+        activeEnd,
+        columnFilters,
+        sortCol,
+        sortDir,
+      ),
     enabled: !!selectedTable,
     placeholderData: keepPreviousData,
     staleTime: 10_000,
@@ -341,7 +353,8 @@ export default function DataBrowserPage() {
                         <Select value={filterCol} onValueChange={(v) => v && setFilterCol(v)}>
                           <SelectTrigger>
                             <SelectValue>
-                              {datetimeColumns.find((c) => c.name === filterCol)?.label ?? "选择时间列"}
+                              {datetimeColumns.find((c) => c.name === filterCol)?.label ??
+                                "选择时间列"}
                             </SelectValue>
                           </SelectTrigger>
                           <SelectContent
@@ -401,9 +414,7 @@ export default function DataBrowserPage() {
                   </CardHeader>
                   <CardContent className="overflow-visible">
                     {columnFilters.length === 0 ? (
-                      <p className="mb-3 text-sm text-muted-foreground">
-                        未添加筛选条件
-                      </p>
+                      <p className="mb-3 text-sm text-muted-foreground">未添加筛选条件</p>
                     ) : (
                       <div className="mb-3 space-y-3">
                         {columnFilters.map((f, i) => (
@@ -411,29 +422,31 @@ export default function DataBrowserPage() {
                             <div className="w-40">
                               <label className="mb-1 block text-xs font-medium">列</label>
                               <div ref={i === 0 ? colFilterTriggerRef : undefined}>
-                              <Select
-                                value={f.col}
-                                onValueChange={(v) => v && updateColumnFilter(i, { col: v })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue>
-                                    {schema?.find((c) => c.name === f.col)?.label ?? "选择列"}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent
-                                  align="start"
-                                  sideOffset={4}
-                                  alignItemWithTrigger={false}
-                                  className="bg-background"
-                                  style={colFilterWidth > 0 ? { width: colFilterWidth } : undefined}
+                                <Select
+                                  value={f.col}
+                                  onValueChange={(v) => v && updateColumnFilter(i, { col: v })}
                                 >
-                                  {(schema ?? []).map((col) => (
-                                    <SelectItem key={col.name} value={col.name}>
-                                      {col.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                  <SelectTrigger>
+                                    <SelectValue>
+                                      {schema?.find((c) => c.name === f.col)?.label ?? "选择列"}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent
+                                    align="start"
+                                    sideOffset={4}
+                                    alignItemWithTrigger={false}
+                                    className="bg-background"
+                                    style={
+                                      colFilterWidth > 0 ? { width: colFilterWidth } : undefined
+                                    }
+                                  >
+                                    {(schema ?? []).map((col) => (
+                                      <SelectItem key={col.name} value={col.name}>
+                                        {col.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </div>
                             </div>
                             <div className="w-20">
@@ -540,10 +553,7 @@ export default function DataBrowserPage() {
                             <LoadingSkeleton cols={schema.length} />
                           ) : tableData && tableData.rows.length === 0 ? (
                             <TableRow>
-                              <TableCell
-                                colSpan={schema?.length ?? 1}
-                                className="p-0"
-                              >
+                              <TableCell colSpan={schema?.length ?? 1} className="p-0">
                                 <EmptyState />
                               </TableCell>
                             </TableRow>
@@ -556,9 +566,7 @@ export default function DataBrowserPage() {
                                     className="max-w-[300px] truncate"
                                     title={String(row[col.name] ?? "")}
                                   >
-                                    {row[col.name] != null
-                                      ? String(row[col.name])
-                                      : ""}
+                                    {row[col.name] != null ? String(row[col.name]) : ""}
                                   </TableCell>
                                 ))}
                               </TableRow>
