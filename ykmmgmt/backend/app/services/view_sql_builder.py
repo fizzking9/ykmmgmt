@@ -124,8 +124,12 @@ class ViewSQLBuilder:
 
     # ── Public API ───────────────────────────────────────────────────────
 
-    def build(self) -> tuple[str, dict[str, Any]]:
+    def build(self, *, apply_limit: bool = True) -> tuple[str, dict[str, Any]]:
         """Build the complete parameterized SQL.
+
+        Args:
+            apply_limit: If True, include ORDER BY. LIMIT is never included
+                         (applied at runtime by endpoints).
 
         Returns:
             (sql_string, params_dict)
@@ -138,6 +142,7 @@ class ViewSQLBuilder:
         join_clause = self._build_joins()
         where_clause = self._build_where()
         group_clause = self._build_group_by()
+        order_clause = self._build_order_by() if apply_limit else ""
 
         parts = [select_clause, from_clause]
         if join_clause:
@@ -146,6 +151,8 @@ class ViewSQLBuilder:
             parts.append(where_clause)
         if group_clause:
             parts.append(group_clause)
+        if order_clause:
+            parts.append(order_clause)
 
         sql = "\n".join(parts)
         return sql, dict(self._params)
@@ -297,14 +304,38 @@ class ViewSQLBuilder:
 
     def _build_filter_condition(self, f: FilterSpec) -> str:
         """Build a single parameterized filter condition."""
-        op = f.operator
-
         # Check if the filter column references a computed column alias
         col: str
         if f.column in self._computed_exprs:
             col = self._computed_exprs[f.column]
         else:
             col = self._resolve_column(f.column)
+
+        # Date range filter: takes precedence over operator-based filtering
+        if f.date_start or f.date_end:
+            # Import here to avoid top-level import overhead
+            from datetime import date as dt_date
+            from datetime import timedelta
+            conditions: list[str] = []
+            if f.date_start:
+                p = self._next_param()
+                try:
+                    self._params[p] = dt_date.fromisoformat(f.date_start)
+                except (ValueError, TypeError) as err:
+                    raise SQLBuildError(f"无效的日期格式: '{f.date_start}'") from err
+                conditions.append(f"{col}::DATE >= :{p}")
+            if f.date_end:
+                try:
+                    end_date = dt_date.fromisoformat(f.date_end) + timedelta(days=1)
+                except (ValueError, TypeError) as err:
+                    raise SQLBuildError(f"无效的日期格式: '{f.date_end}'") from err
+                p = self._next_param()
+                self._params[p] = end_date
+                conditions.append(f"{col} < :{p}")
+            return "(" + " AND ".join(conditions) + ")"
+
+        # Operator-based filter (original logic)
+        op = f.operator
 
         # Null checks
         if op == "is_null":
@@ -355,6 +386,8 @@ class ViewSQLBuilder:
             return self._build_arithmetic_expr(cc)
         if cc.expression_type == "datetime_shift":
             return self._build_datetime_shift_expr(cc)
+        if cc.expression_type == "datetime_trunc":
+            return self._build_datetime_trunc_expr(cc)
         raise SQLBuildError(f"不支持的计算列类型: '{cc.expression_type}'")
 
     def _build_arithmetic_expr(self, cc: ComputedColumnSpec) -> str:
@@ -423,6 +456,39 @@ class ViewSQLBuilder:
             # Return the value as-is; it will be cast via ::NUMERIC in arithmetic
             return operand.value
         raise SQLBuildError(f"不支持的计算列操作数类型: '{operand.type}'")
+
+    def _build_datetime_trunc_expr(self, cc: ComputedColumnSpec) -> str:
+        """Build a datetime truncation expression using PostgreSQL DATE_TRUNC."""
+        if not cc.trunc_column:
+            raise SQLBuildError(f"计算列 '{cc.alias}' 缺少截断列参数")
+        if not cc.trunc_unit:
+            raise SQLBuildError(f"计算列 '{cc.alias}' 缺少截断单位")
+        base = self._resolve_computed_operand(cc.trunc_column)
+        return f"DATE_TRUNC('{cc.trunc_unit}', {base})"
+
+    def _build_order_by(self) -> str:
+        """Build ORDER BY clause."""
+        if not self._config.order_by:
+            return ""
+        # Collect aggregation aliases for ORDER BY reference
+        agg_aliases: set[str] = {
+            a.alias for a in self._config.aggregations if a.alias
+        }
+        cols: list[str] = []
+        for o in self._config.order_by:
+            if o.column in self._computed_exprs or o.column in agg_aliases:
+                col = _quote_ident(o.column)
+            else:
+                col = self._resolve_column(o.column)
+            direction = "DESC" if o.direction == "desc" else "ASC"
+            cols.append(f"{col} {direction}")
+        return "ORDER BY " + ", ".join(cols)
+
+    def _build_limit(self) -> str:
+        """Build LIMIT clause."""
+        if self._config.limit and self._config.limit > 0:
+            return f"LIMIT {self._config.limit}"
+        return ""
 
     # ── Helpers ─────────────────────────────────────────────────────────
 

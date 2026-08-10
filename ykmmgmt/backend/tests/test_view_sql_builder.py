@@ -1,6 +1,7 @@
 """Tests for ViewSQLBuilder — datetime_trunc, date range filters, ORDER BY, LIMIT."""
 
 import pytest
+
 from app.schemas.view import (
     AggregationSpec,
     ColumnSpec,
@@ -11,7 +12,7 @@ from app.schemas.view import (
     OrderSpec,
     ViewConfig,
 )
-from app.services.view_sql_builder import ViewSQLBuilder, SQLBuildError
+from app.services.view_sql_builder import SQLBuildError, ViewSQLBuilder
 
 
 def _make_builder(config: ViewConfig, columns: dict[str, dict[str, object]]):
@@ -435,6 +436,7 @@ def test_full_pipeline_join_filter_order_limit():
 async def test_date_filter_preview_integration():
     """Date range filter executes successfully via preview API."""
     from httpx import ASGITransport, AsyncClient
+
     from main import app
 
     transport = ASGITransport(app=app)
@@ -482,6 +484,7 @@ async def test_date_filter_preview_integration():
 async def test_get_view_data_with_params_integration():
     """get_view_data passes filter params correctly — no 'param_1' bind error."""
     from httpx import ASGITransport, AsyncClient
+
     from main import app
 
     transport = ASGITransport(app=app)
@@ -544,6 +547,7 @@ async def test_get_view_data_with_params_integration():
 async def test_get_view_data_with_operator_filter_integration():
     """get_view_data with text-operator filter passes params correctly."""
     from httpx import ASGITransport, AsyncClient
+
     from main import app
 
     transport = ASGITransport(app=app)
@@ -611,6 +615,7 @@ async def test_get_view_data_with_operator_filter_integration():
 async def test_get_view_data_limit_caps_total_and_pages():
     """When config.limit is set, total is capped and pagination is consistent."""
     from httpx import ASGITransport, AsyncClient
+
     from main import app
 
     transport = ASGITransport(app=app)

@@ -32,3 +32,6 @@ Thumbs.db
 # Sample data (not tracked)
 *.csv
 *.xlsx
+
+# Debug/export scratch artifacts
+tmp_export/

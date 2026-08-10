@@ -10,12 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useViews,
-  useViewData,
-  useDeleteView,
-  type ViewListResponse,
-} from "@/hooks/useViews";
+import { useViews, useViewData, useDeleteView, type ViewListResponse } from "@/hooks/useViews";
 import {
   Eye,
   Pencil,
@@ -65,10 +60,7 @@ function DeleteConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onCancel}
-      />
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
       {/* Dialog */}
       <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
         <h3 className="text-lg font-semibold">确认删除</h3>
@@ -79,11 +71,7 @@ function DeleteConfirmDialog({
           <Button variant="outline" onClick={onCancel} disabled={isPending}>
             取消
           </Button>
-          <Button
-            variant="destructive"
-            onClick={onConfirm}
-            disabled={isPending}
-          >
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
             {isPending ? (
               <Loader2 className="mr-1 h-4 w-4 animate-spin" />
             ) : (
@@ -113,11 +101,7 @@ function PreviewDialog({
   const [page, setPage] = useState(1);
   const size = 20;
 
-  const { data, isLoading, isError, error } = useViewData(
-    open ? viewId : undefined,
-    page,
-    size,
-  );
+  const { data, isLoading, isError, error } = useViewData(open ? viewId : undefined, page, size);
 
   const totalPages = data ? Math.ceil(data.total / data.size) : 0;
 
@@ -162,10 +146,7 @@ function PreviewDialog({
                 <TableHeader>
                   <TableRow>
                     {data.columns.map((col) => (
-                      <TableHead
-                        key={col}
-                        className="max-w-[250px] truncate whitespace-nowrap"
-                      >
+                      <TableHead key={col} className="max-w-[250px] truncate whitespace-nowrap">
                         {col}
                       </TableHead>
                     ))}
@@ -209,7 +190,7 @@ function PreviewDialog({
                 }}
                 className="inline w-16 rounded border px-1 py-0.5 text-center text-sm"
               />{" "}
-              / {totalPages || 1} 页（每页最多 100 条）
+              / {totalPages || 1} 页（每页最多 {data.size} 条）
             </p>
             <div className="flex gap-2">
               <Button
@@ -288,9 +269,15 @@ export default function ViewsListPage() {
             <TableBody>
               {Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-48" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-40" />
+                  </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       <Skeleton className="h-8 w-16" />
@@ -310,14 +297,8 @@ export default function ViewsListPage() {
       {!isLoading && !isError && views && views.length === 0 && (
         <div className="rounded-md bg-muted/30 p-16 text-center">
           <Eye className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-lg text-muted-foreground">
-            暂无保存的视图，请先创建数据视图
-          </p>
-          <Button
-            className="mt-4"
-            variant="outline"
-            onClick={() => navigate("/views/builder")}
-          >
+          <p className="text-lg text-muted-foreground">暂无保存的视图，请先创建数据视图</p>
+          <Button className="mt-4" variant="outline" onClick={() => navigate("/views/builder")}>
             创建视图
           </Button>
         </div>
@@ -341,20 +322,20 @@ export default function ViewsListPage() {
                   <TableCell className="font-medium max-w-[200px] truncate" title={view.name}>
                     {view.name}
                   </TableCell>
-                  <TableCell className="max-w-[300px] truncate text-muted-foreground" title={view.description ?? ""}>
+                  <TableCell
+                    className="max-w-[300px] truncate text-muted-foreground"
+                    title={view.description ?? ""}
+                  >
                     {view.description || "—"}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {formatDate(view.created_at)}
-                  </TableCell>
+                  <TableCell className="whitespace-nowrap">{formatDate(view.created_at)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {/* 可视化 — disabled placeholder */}
+                      {/* 可视化 */}
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled
-                        title="可视化功能将在后续版本中推出"
+                        onClick={() => navigate(`/visualizations/builder?view_id=${view.id}`)}
                       >
                         <BarChart3 className="mr-1 h-4 w-4" />
                         可视化

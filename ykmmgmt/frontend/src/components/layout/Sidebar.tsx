@@ -1,7 +1,16 @@
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { Upload, History, ChevronDown, Database, BarChart3, Eye, LayoutGrid } from "lucide-react";
+import {
+  Upload,
+  History,
+  ChevronDown,
+  Database,
+  BarChart3,
+  Eye,
+  LayoutGrid,
+  PieChart,
+} from "lucide-react";
 import { useState } from "react";
 
 interface NavGroup {
@@ -26,6 +35,11 @@ const groups: NavGroup[] = [
     links: [
       { to: "/views", label: "数据视图", icon: <LayoutGrid className="h-4 w-4" /> },
       { to: "/views/builder", label: "视图创建", icon: <Eye className="h-4 w-4" /> },
+      {
+        to: "/visualizations/builder",
+        label: "可视化构建",
+        icon: <PieChart className="h-4 w-4" />,
+      },
     ],
   },
 ];
