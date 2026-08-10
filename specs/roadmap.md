@@ -173,37 +173,30 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 9 — Dashboard Builder
+## Phase 9 — Dashboard Builder & Management
 
-**Goal:** Compose dashboards from saved visualizations with flexible grid positioning.
+**Goal:** Compose, view, and manage dashboards from saved visualizations with flexible grid positioning and sidebar navigation.
 
 - [ ] Backend: Dashboard model — `name`, `description`, `layout_json` (array of `{visualization_id, x, y, width, height}` grid positions), `created_at`, `updated_at`
 - [ ] Backend: `POST /api/dashboards` — create a dashboard
+- [ ] Backend: `GET /api/dashboards` — list all dashboards
+- [ ] Backend: `GET /api/dashboards/{id}` — full dashboard config with visualization data for rendering
 - [ ] Backend: `PUT /api/dashboards/{id}` — update dashboard layout
-- [ ] Frontend: Dashboard builder page — grid canvas to place visualization tiles
+- [ ] Backend: `DELETE /api/dashboards/{id}` — delete a dashboard
+- [ ] Frontend: Dashboard builder page — grid canvas using `react-grid-layout` to place visualization tiles
 - [ ] Frontend: "Add Visualization" panel — pick from saved visualizations (Phase 8), drag onto grid
 - [ ] Frontend: Tile resize and reposition — each visualization tile is draggable and resizable on the grid
 - [ ] Frontend: Remove tile, adjust tile dimensions
 - [ ] Frontend: Save dashboard — persist layout to backend
-
----
-
-## Phase 10 — Dashboard Navigation & Display
-
-**Goal:** Saved dashboards appear as sidebar navigation items under a parent "Dashboards" section. Users can view, edit, and delete dashboards.
-
-- [ ] Backend: `GET /api/dashboards` — list all dashboards
-- [ ] Backend: `GET /api/dashboards/{id}` — full dashboard config with visualization data for rendering
-- [ ] Backend: `DELETE /api/dashboards/{id}` — delete a dashboard
 - [ ] Frontend: Sidebar — add collapsible "Dashboards" parent section; each saved dashboard is a child nav item using the dashboard's name
 - [ ] Frontend: Dashboard display page — render the grid layout with all visualization tiles fetching live data
-- [ ] Frontend: Edit button on dashboard page — opens Phase 9 builder
+- [ ] Frontend: Edit button on dashboard page — opens the builder pre-filled
 - [ ] Frontend: Delete button with confirmation on dashboard page
 - [ ] Frontend: Dashboard list/manage page accessible from parent "Dashboards" item (create, rename, delete)
 
 ---
 
-## Phase 11 — Platform Data Scraping
+## Phase 10 — Platform Data Scraping
 
 **Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
 
@@ -218,7 +211,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 12 — Auth & Multi-User
+## Phase 11 — Auth & Multi-User
 
 **Goal:** Only authorized team members can access the dashboard.
 
@@ -229,7 +222,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 13 — Polish & Deploy
+## Phase 12 — Polish & Deploy
 
 **Goal:** Production-ready.
 
