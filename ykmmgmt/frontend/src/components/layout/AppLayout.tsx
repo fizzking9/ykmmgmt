@@ -9,14 +9,14 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Desktop sidebar — hidden on small screens */}
-      <aside className="hidden md:flex md:w-60 md:flex-col md:border-r md:bg-card">
+      {/* Desktop sidebar — hidden on small screens and in print (PDF export) */}
+      <aside className="hidden md:flex md:w-60 md:flex-col md:border-r md:bg-card print:hidden">
         <Sidebar />
       </aside>
 
       {/* Mobile sidebar — Sheet overlay */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetTrigger className="fixed left-3 top-3 z-40 inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted md:hidden">
+        <SheetTrigger className="fixed left-3 top-3 z-40 inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted md:hidden print:hidden">
           <Menu className="h-5 w-5" />
         </SheetTrigger>
         <SheetContent side="left" className="w-60 p-0">

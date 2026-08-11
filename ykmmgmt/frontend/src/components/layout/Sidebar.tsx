@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   LayoutDashboard,
   PieChart,
+  Plus,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -80,7 +81,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
     (location.pathname.startsWith("/dashboards/") &&
       !location.pathname.startsWith("/dashboards/builder"));
 
-  const dashboardsOpen = openGroups["仪表盘"] ?? isDashboardsParentActive;
+  const dashboardsOpen = openGroups["数据看板"] ?? isDashboardsParentActive;
 
   return (
     <nav className="flex flex-col gap-2 p-4">
@@ -141,7 +142,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
 
       {/* Dynamic 仪表盘 section: parent links to the list page; each saved
           dashboard appears as a child nav item (by name). */}
-      <Collapsible open={dashboardsOpen} onOpenChange={() => toggleGroup("仪表盘")}>
+      <Collapsible open={dashboardsOpen} onOpenChange={() => toggleGroup("数据看板")}>
         <div
           className={cn(
             "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted",
@@ -154,7 +155,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
             className="flex flex-1 items-center gap-2 text-left"
           >
             <LayoutDashboard className="h-4 w-4" />
-            <span className="flex-1">仪表盘</span>
+            <span className="flex-1">数据看板</span>
           </Link>
           <CollapsibleTrigger className="shrink-0" title="展开/收起">
             <ChevronDown
@@ -179,7 +180,22 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
             }
           >
             <LayoutGrid className="h-4 w-4" />
-            全部仪表盘
+            看板列表
+          </NavLink>
+          <NavLink
+            to="/dashboards/builder"
+            onClick={onNavClick}
+            className={() =>
+              cn(
+                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
+                location.pathname.startsWith("/dashboards/builder")
+                  ? "bg-muted font-medium text-primary"
+                  : "text-muted-foreground",
+              )
+            }
+          >
+            <Plus className="h-4 w-4" />
+            看板创建
           </NavLink>
           {(dashboards ?? []).map((dash) => (
             <NavLink

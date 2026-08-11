@@ -12,8 +12,11 @@ import {
   useVisualizationBuilderContext,
   CHART_TYPES,
   COLOR_THEMES,
+  DEFAULT_NUMBER_FORMAT,
   type ChartType,
+  type NumberFormat,
 } from "@/contexts/VisualizationBuilderContext";
+import { useDashboardBuilderContext } from "@/contexts/DashboardBuilderContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,6 +54,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
@@ -197,6 +201,20 @@ function formatNumber(
     formatted = parts.join(".");
   }
   return currencyPrefix + formatted;
+}
+
+/** Resolve the number format: explicit override > persisted config > default. */
+function resolveNumberFormat(
+  config: Record<string, unknown>,
+  override?: NumberFormat,
+): NumberFormat {
+  return override ?? (config._numberFormat as NumberFormat) ?? DEFAULT_NUMBER_FORMAT;
+}
+
+/** Tooltip value formatter honoring the configured number format (kills float noise). */
+function makeTooltipFormatter(nf: NumberFormat) {
+  return (value: unknown) =>
+    formatNumber(value, nf.decimals, nf.thousandsSeparator, nf.currencyPrefix);
 }
 
 // ── Categorical aggregation (bar chart) ────────────────────────────────
@@ -427,6 +445,19 @@ export default function VisualizationBuilderPage() {
   const vizBuilder = useVisualizationBuilderContext();
   const { state } = vizBuilder;
 
+  // When the user jumps here from a dashboard tile's "配置可视化" button,
+  // the dashboard draft lives in DashboardBuilderContext (above the router)
+  // — offer a way back without losing it.
+  const dashboardBuilder = useDashboardBuilderContext();
+  const hasDashboardDraft =
+    dashboardBuilder.state.tiles.length > 0 ||
+    !!dashboardBuilder.state.editingId ||
+    dashboardBuilder.state.name.trim() !== "";
+  const backToDashboardBuilder = () => {
+    const draftId = dashboardBuilder.state.editingId;
+    navigate(draftId ? `/dashboards/builder/${draftId}` : "/dashboards/builder");
+  };
+
   // Fetch full view data for visualization preview (all rows, not paginated)
   const {
     data: viewData,
@@ -649,7 +680,14 @@ export default function VisualizationBuilderPage() {
           <TablePreview config={config} columns={columns} rows={rows} inModal={opts.forModal} />
         );
       case "kpi_card":
-        return <KpiCardPreview config={config} rows={rows} numberFormat={state.numberFormat} />;
+        return (
+          <KpiCardPreview
+            config={config}
+            rows={rows}
+            numberFormat={state.numberFormat}
+            height={chartHeight}
+          />
+        );
       case "bar":
         return (
           <BarChartPreview
@@ -659,6 +697,7 @@ export default function VisualizationBuilderPage() {
             dateColumns={dateColumns}
             height={chartHeight}
             showBrush={showBrush}
+            numberFormat={state.numberFormat}
           />
         );
       case "line":
@@ -670,6 +709,7 @@ export default function VisualizationBuilderPage() {
             dateColumns={dateColumns}
             height={chartHeight}
             showBrush={showBrush}
+            numberFormat={state.numberFormat}
           />
         );
       case "pie":
@@ -690,6 +730,7 @@ export default function VisualizationBuilderPage() {
             dateColumns={dateColumns}
             height={chartHeight}
             showBrush={showBrush}
+            numberFormat={state.numberFormat}
           />
         );
       case "histogram":
@@ -719,7 +760,15 @@ export default function VisualizationBuilderPage() {
     <div>
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">可视化构建器</h2>
+        <div className="flex items-center gap-3">
+          {hasDashboardDraft && (
+            <Button variant="ghost" size="sm" onClick={backToDashboardBuilder}>
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              返回看板构建器
+            </Button>
+          )}
+          <h2 className="text-2xl font-bold tracking-tight">可视化构建器</h2>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExportPng} disabled={!state.viewId}>
             <Download className="mr-1 h-4 w-4" />
@@ -982,7 +1031,7 @@ export default function VisualizationBuilderPage() {
                       >
                         <SelectTrigger>
                           <SelectValue>
-                            {GRANULARITY_OPTIONS.find(
+                            {TIME_PROFILE_GRANULARITY_OPTIONS.find(
                               (o) =>
                                 o.value ===
                                 ((state.configJson.default_granularity as string) || "day"),
@@ -995,7 +1044,7 @@ export default function VisualizationBuilderPage() {
                           alignItemWithTrigger={false}
                           className="bg-background"
                         >
-                          {GRANULARITY_OPTIONS.map((opt) => (
+                          {TIME_PROFILE_GRANULARITY_OPTIONS.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value}>
                               {opt.label}
                             </SelectItem>
@@ -1309,6 +1358,16 @@ const AGGREGATION_OPTIONS = [
 const GRANULARITY_OPTIONS = [
   { value: "day", label: "日" },
   { value: "month", label: "月" },
+  { value: "year", label: "年" },
+];
+
+// Default granularity for the dashboard time profile — supports the full
+// set the dashboard granularity tabs offer (week/quarter included).
+const TIME_PROFILE_GRANULARITY_OPTIONS = [
+  { value: "day", label: "日" },
+  { value: "week", label: "周" },
+  { value: "month", label: "月" },
+  { value: "quarter", label: "季" },
   { value: "year", label: "年" },
 ];
 
@@ -2409,10 +2468,13 @@ export function KpiCardPreview({
   config,
   rows,
   numberFormat,
+  height,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
   numberFormat: { decimals: number; thousandsSeparator: boolean; currencyPrefix: string };
+  /** Fixed height (px) for contexts without a height-constrained parent (e.g. thumbnails). */
+  height?: number;
 }) {
   const valueColumn = config.value_column as string;
   const label = (config.label as string) || "指标";
@@ -2589,29 +2651,38 @@ export function KpiCardPreview({
   const granularityLabel = granularity === "day" ? "日" : granularity === "month" ? "月" : "年";
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border bg-card p-8">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-2 text-4xl font-bold tracking-tight">{formattedValue}</p>
+    <div
+      // Fill the tile completely; inline-size containment lets the value
+      // scale with the tile width (cqw) instead of leaving blank area.
+      className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg bg-card p-3 text-center [container-type:inline-size]"
+      style={height ? { height } : { minHeight: 200 }}
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-bold leading-tight tracking-tight text-[clamp(1.5rem,11cqw,3.5rem)]">
+        {formattedValue}
+      </p>
       {currentPeriodLabel && (
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground">
           {currentPeriodLabel}（按{granularityLabel}）
         </p>
       )}
-      <div className="mt-3 space-y-1">
-        {prevChange !== null && (
-          <p className={`text-sm ${prevChange >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {prevChange >= 0 ? "+" : ""}
-            {prevChange.toFixed(1)}% 环比
-          </p>
-        )}
-        {yearAgoChange !== null && (
-          <p className={`text-sm ${yearAgoChange >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {yearAgoChange >= 0 ? "+" : ""}
-            {yearAgoChange.toFixed(1)}% 同比
-          </p>
-        )}
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">共 {rows.length} 条记录</p>
+      {(prevChange !== null || yearAgoChange !== null) && (
+        <div className="flex flex-wrap items-center justify-center gap-x-3">
+          {prevChange !== null && (
+            <p className={`text-xs ${prevChange >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {prevChange >= 0 ? "+" : ""}
+              {prevChange.toFixed(1)}% 环比
+            </p>
+          )}
+          {yearAgoChange !== null && (
+            <p className={`text-xs ${yearAgoChange >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {yearAgoChange >= 0 ? "+" : ""}
+              {yearAgoChange.toFixed(1)}% 同比
+            </p>
+          )}
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground/80">共 {rows.length} 条记录</p>
     </div>
   );
 }
@@ -2623,6 +2694,8 @@ export function BarChartPreview({
   dateColumns,
   height = 420,
   showBrush = true,
+  fill = false,
+  numberFormat,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
@@ -2630,6 +2703,10 @@ export function BarChartPreview({
   dateColumns: string[];
   height?: number;
   showBrush?: boolean;
+  /** Fill the height-constrained parent instead of a fixed height (dashboard tiles). */
+  fill?: boolean;
+  /** Number format override (live builder state); falls back to config/default. */
+  numberFormat?: NumberFormat;
 }) {
   const xColumn = config.x_column as string;
   const yColumns = useMemo(() => (config.y_columns as string[]) ?? [], [config.y_columns]);
@@ -2640,6 +2717,8 @@ export function BarChartPreview({
   const isTimeSeries = dateColumns.includes(xColumn);
   const showTime = (config.show_time as boolean) ?? false;
   const { hidden, toggle } = useSeriesToggle();
+  const nf = resolveNumberFormat(config, numberFormat);
+  const formatTooltipValue = makeTooltipFormatter(nf);
 
   const processedRows = useMemo(
     () => processTimeSeriesRows(rows, xColumn, yColumns, config, isTimeSeries),
@@ -2676,12 +2755,16 @@ export function BarChartPreview({
   }
 
   return (
-    <div>
+    <div className={fill ? "flex h-full min-h-0 flex-col" : undefined}>
       {title && <p className="mb-3 text-center text-sm font-semibold">{title}</p>}
       {(config.y_label as string) && (
         <p className="mb-1 text-xs font-medium text-muted-foreground">{config.y_label as string}</p>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer
+        width="100%"
+        height={fill ? "100%" : height}
+        style={fill ? { flex: 1, minHeight: 0 } : undefined}
+      >
         <BarChart data={chartData} margin={{ top: 5, right: 24, left: 8, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
           <XAxis
@@ -2705,6 +2788,7 @@ export function BarChartPreview({
             contentStyle={TOOLTIP_STYLE}
             cursor={{ fill: "rgba(148,163,184,0.12)" }}
             labelFormatter={(v) => (isTimeSeries ? formatAxisDate(String(v), showTime) : String(v))}
+            formatter={formatTooltipValue}
           />
           <Legend
             verticalAlign="top"
@@ -2767,6 +2851,8 @@ export function LineChartPreview({
   dateColumns,
   height = 420,
   showBrush = true,
+  fill = false,
+  numberFormat,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
@@ -2774,6 +2860,10 @@ export function LineChartPreview({
   dateColumns: string[];
   height?: number;
   showBrush?: boolean;
+  /** Fill the height-constrained parent instead of a fixed height (dashboard tiles). */
+  fill?: boolean;
+  /** Number format override (live builder state); falls back to config/default. */
+  numberFormat?: NumberFormat;
 }) {
   const xColumn = config.x_column as string;
   const yColumns = useMemo(() => (config.y_columns as string[]) ?? [], [config.y_columns]);
@@ -2782,6 +2872,8 @@ export function LineChartPreview({
   const isTimeSeries = dateColumns.includes(xColumn);
   const showTime = (config.show_time as boolean) ?? false;
   const { hidden, toggle } = useSeriesToggle();
+  const nf = resolveNumberFormat(config, numberFormat);
+  const formatTooltipValue = makeTooltipFormatter(nf);
 
   const processedRows = useMemo(
     () => processTimeSeriesRows(rows, xColumn, yColumns, config, isTimeSeries),
@@ -2831,12 +2923,16 @@ export function LineChartPreview({
   }
 
   return (
-    <div>
+    <div className={fill ? "flex h-full min-h-0 flex-col" : undefined}>
       {title && <p className="mb-3 text-center text-sm font-semibold">{title}</p>}
       {(config.y_label as string) && (
         <p className="mb-1 text-xs font-medium text-muted-foreground">{config.y_label as string}</p>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer
+        width="100%"
+        height={fill ? "100%" : height}
+        style={fill ? { flex: 1, minHeight: 0 } : undefined}
+      >
         <ReLineChart data={chartData} margin={{ top: 5, right: 24, left: 8, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
           <XAxis
@@ -2859,6 +2955,7 @@ export function LineChartPreview({
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
             labelFormatter={(v) => (isTimeSeries ? formatAxisDate(String(v), showTime) : String(v))}
+            formatter={formatTooltipValue}
           />
           <Legend
             verticalAlign="top"
@@ -2997,11 +3094,13 @@ export function PieChartPreview({
   rows,
   colors,
   height = 400,
+  fill = false,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
   colors: string[];
   height?: number;
+  fill?: boolean;
 }) {
   const labelColumn = config.label_column as string;
   const valueColumn = config.value_column as string;
@@ -3047,9 +3146,13 @@ export function PieChartPreview({
   }
 
   return (
-    <div>
+    <div className={fill ? "flex h-full min-h-0 flex-col" : undefined}>
       {title && <p className="mb-3 text-center text-sm font-semibold">{title}</p>}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer
+        width="100%"
+        height={fill ? "100%" : height}
+        style={fill ? { flex: 1, minHeight: 0 } : undefined}
+      >
         <RePieChart>
           <Pie
             data={visibleData}
@@ -3100,6 +3203,7 @@ function ScatterTooltipContent({
   groupByColumn,
   isTimeSeries,
   showTime,
+  numberFormat,
 }: {
   active?: boolean;
   payload?: { payload?: Record<string, unknown> }[];
@@ -3107,14 +3211,21 @@ function ScatterTooltipContent({
   groupByColumn: string;
   isTimeSeries: boolean;
   showTime: boolean;
+  numberFormat?: NumberFormat;
 }) {
   if (!active || !payload?.length) return null;
   const point = payload[0]?.payload;
   if (!point) return null;
+  const nf = numberFormat ?? DEFAULT_NUMBER_FORMAT;
   const yCol = String(point[SCATTER_YCOL_KEY] ?? "");
   const xRaw = point[xColumn];
   const xText = isTimeSeries ? formatAxisDate(String(xRaw ?? ""), showTime) : String(xRaw ?? "");
-  const yText = formatNumber(point[SCATTER_Y_KEY], 2, true, "")
+  const yText = formatNumber(
+    point[SCATTER_Y_KEY],
+    nf.decimals,
+    nf.thousandsSeparator,
+    nf.currencyPrefix,
+  )
     .replace(/(\.\d*?)0+$/, "$1")
     .replace(/\.$/, "");
   const lines = [
@@ -3186,6 +3297,8 @@ export function ScatterChartPreview({
   dateColumns,
   height = 420,
   showBrush = true,
+  fill = false,
+  numberFormat,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
@@ -3193,6 +3306,8 @@ export function ScatterChartPreview({
   dateColumns: string[];
   height?: number;
   showBrush?: boolean;
+  fill?: boolean;
+  numberFormat?: NumberFormat;
 }) {
   const xColumn = config.x_column as string;
   const yColumns = useMemo(() => (config.y_columns as string[]) ?? [], [config.y_columns]);
@@ -3201,6 +3316,7 @@ export function ScatterChartPreview({
   const isTimeSeries = dateColumns.includes(xColumn);
   const showTime = (config.show_time as boolean) ?? false;
   const { hidden, toggle } = useSeriesToggle();
+  const nf = resolveNumberFormat(config, numberFormat);
 
   const processedRows = useMemo(
     () => processTimeSeriesRows(rows, xColumn, yColumns, config, isTimeSeries),
@@ -3295,12 +3411,16 @@ export function ScatterChartPreview({
   for (const s of styledSeries) legendMeta[s.name] = { color: s.color, shape: s.shape };
 
   return (
-    <div>
+    <div className={fill ? "flex h-full min-h-0 flex-col" : undefined}>
       {title && <p className="mb-3 text-center text-sm font-semibold">{title}</p>}
       {(config.y_label as string) && (
         <p className="mb-1 text-xs font-medium text-muted-foreground">{config.y_label as string}</p>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer
+        width="100%"
+        height={fill ? "100%" : height}
+        style={fill ? { flex: 1, minHeight: 0 } : undefined}
+      >
         <ReScatterChart margin={{ top: 5, right: 24, left: 8, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
           <XAxis
@@ -3333,6 +3453,7 @@ export function ScatterChartPreview({
                 groupByColumn={groupByColumn}
                 isTimeSeries={isTimeSeries}
                 showTime={showTime}
+                numberFormat={nf}
               />
             }
           />
@@ -3420,11 +3541,13 @@ export function HistogramChartPreview({
   rows,
   colors,
   height = 420,
+  fill = false,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
   colors: string[];
   height?: number;
+  fill?: boolean;
 }) {
   const selected = useMemo(() => (config.columns as string[]) ?? [], [config.columns]);
   const bins = Math.min(200, Math.max(1, (config.bins as number) ?? 20));
@@ -3451,12 +3574,16 @@ export function HistogramChartPreview({
   const multiSeries = selected.length > 1;
 
   return (
-    <div>
+    <div className={fill ? "flex h-full min-h-0 flex-col" : undefined}>
       {title && <p className="mb-3 text-center text-sm font-semibold">{title}</p>}
       {(config.y_label as string) && (
         <p className="mb-1 text-xs font-medium text-muted-foreground">{config.y_label as string}</p>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer
+        width="100%"
+        height={fill ? "100%" : height}
+        style={fill ? { flex: 1, minHeight: 0 } : undefined}
+      >
         <BarChart
           data={binData}
           margin={{ top: 5, right: 24, left: 8, bottom: 5 }}
@@ -3615,11 +3742,13 @@ export function BoxplotChartPreview({
   rows,
   colors,
   height = 420,
+  fill = false,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
   colors: string[];
   height?: number;
+  fill?: boolean;
 }) {
   const categoryColumn = (config.category_column as string) ?? "";
   const valueColumn = (config.value_column as string) ?? "";
@@ -3681,12 +3810,16 @@ export function BoxplotChartPreview({
   const pad = (hi - lo || Math.abs(hi) || 1) * 0.06;
 
   return (
-    <div>
+    <div className={fill ? "flex h-full min-h-0 flex-col" : undefined}>
       {title && <p className="mb-3 text-center text-sm font-semibold">{title}</p>}
       {(config.y_label as string) && (
         <p className="mb-1 text-xs font-medium text-muted-foreground">{config.y_label as string}</p>
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer
+        width="100%"
+        height={fill ? "100%" : height}
+        style={fill ? { flex: 1, minHeight: 0 } : undefined}
+      >
         <BarChart data={summaries} margin={{ top: 5, right: 24, left: 8, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
           <XAxis

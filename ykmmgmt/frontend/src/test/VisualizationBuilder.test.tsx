@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { VisualizationBuilderProvider } from "@/contexts/VisualizationBuilderContext";
+import { DashboardBuilderProvider } from "@/contexts/DashboardBuilderContext";
 import VisualizationBuilderPage from "@/pages/VisualizationBuilderPage";
 
 // Mock the hooks
@@ -89,7 +90,9 @@ function renderPage(initialRoute = "/visualizations/builder") {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialRoute]}>
         <VisualizationBuilderProvider>
-          <VisualizationBuilderPage />
+          <DashboardBuilderProvider>
+            <VisualizationBuilderPage />
+          </DashboardBuilderProvider>
         </VisualizationBuilderProvider>
       </MemoryRouter>
     </QueryClientProvider>,

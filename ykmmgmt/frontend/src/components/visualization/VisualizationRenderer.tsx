@@ -52,6 +52,7 @@ export function VisualizationRenderer({
   columns,
   rows,
   height = 480,
+  fill = false,
 }: {
   chartType: ChartType;
   config: Record<string, unknown>;
@@ -59,6 +60,8 @@ export function VisualizationRenderer({
   rows: Record<string, unknown>[];
   /** Chart height in px (default 480). */
   height?: number;
+  /** Fill a height-constrained parent (dashboard tiles) instead of a fixed height. */
+  fill?: boolean;
 }) {
   const colors = useMemo(() => themeColorsFromConfig(config), [config]);
   const numberFormat = useMemo(() => numberFormatFromConfig(config), [config]);
@@ -81,7 +84,14 @@ export function VisualizationRenderer({
       case "table":
         return <TablePreview config={config} columns={columns} rows={rows} />;
       case "kpi_card":
-        return <KpiCardPreview config={config} rows={rows} numberFormat={numberFormat} />;
+        return (
+          <KpiCardPreview
+            config={config}
+            rows={rows}
+            numberFormat={numberFormat}
+            height={fill ? undefined : chartHeight}
+          />
+        );
       case "bar":
         return (
           <BarChartPreview
@@ -90,6 +100,8 @@ export function VisualizationRenderer({
             colors={colors}
             dateColumns={dateColumns}
             height={chartHeight}
+            fill={fill}
+            numberFormat={numberFormat}
           />
         );
       case "line":
@@ -100,10 +112,20 @@ export function VisualizationRenderer({
             colors={colors}
             dateColumns={dateColumns}
             height={chartHeight}
+            fill={fill}
+            numberFormat={numberFormat}
           />
         );
       case "pie":
-        return <PieChartPreview config={config} rows={rows} colors={colors} height={chartHeight} />;
+        return (
+          <PieChartPreview
+            config={config}
+            rows={rows}
+            colors={colors}
+            height={chartHeight}
+            fill={fill}
+          />
+        );
       case "scatter":
         return (
           <ScatterChartPreview
@@ -112,15 +134,29 @@ export function VisualizationRenderer({
             colors={colors}
             dateColumns={dateColumns}
             height={chartHeight}
+            fill={fill}
+            numberFormat={numberFormat}
           />
         );
       case "histogram":
         return (
-          <HistogramChartPreview config={config} rows={rows} colors={colors} height={chartHeight} />
+          <HistogramChartPreview
+            config={config}
+            rows={rows}
+            colors={colors}
+            height={chartHeight}
+            fill={fill}
+          />
         );
       case "boxplot":
         return (
-          <BoxplotChartPreview config={config} rows={rows} colors={colors} height={chartHeight} />
+          <BoxplotChartPreview
+            config={config}
+            rows={rows}
+            colors={colors}
+            height={chartHeight}
+            fill={fill}
+          />
         );
     }
   })();

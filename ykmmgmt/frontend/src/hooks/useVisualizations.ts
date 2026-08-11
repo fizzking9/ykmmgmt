@@ -225,5 +225,7 @@ export function useVisualizationTileData(id: string | undefined, params: VizData
     queryFn: () => fetchVisualizationDataWithParams(id!, { start, end, granularity, agg }),
     enabled: !!id,
     staleTime: Infinity,
+    // No background retries — surface errors in the tile immediately
+    retry: false,
   });
 }

@@ -157,7 +157,7 @@ async def delete_visualization(viz_id: uuid.UUID, db: AsyncSession = Depends(get
 # ── Data Endpoint ───────────────────────────────────────────────────────────
 
 
-Granularity = Literal["year", "month", "day"]
+Granularity = Literal["year", "quarter", "month", "week", "day"]
 AggFunction = Literal["SUM", "COUNT", "AVG", "MIN", "MAX"]
 
 
@@ -231,8 +231,14 @@ def _bucket_key(value: object, granularity: Granularity) -> dt.datetime | None:
         return None
     if granularity == "year":
         return dt.datetime(d.year, 1, 1)
+    if granularity == "quarter":
+        quarter_month = ((d.month - 1) // 3) * 3 + 1
+        return dt.datetime(d.year, quarter_month, 1)
     if granularity == "month":
         return dt.datetime(d.year, d.month, 1)
+    if granularity == "week":
+        # ISO week — bucket starts on Monday
+        return dt.datetime(d.year, d.month, d.day) - dt.timedelta(days=d.weekday())
     return dt.datetime(d.year, d.month, d.day)
 
 
@@ -305,7 +311,7 @@ async def get_visualization_data(
     viz_id: uuid.UUID,
     start: str | None = Query(None, description="时间筛选起始（ISO 日期），仅当可视化配置了时间列时生效"),
     end: str | None = Query(None, description="时间筛选结束（ISO 日期），仅当可视化配置了时间列时生效"),
-    granularity: Granularity | None = Query(None, description="时间粒度重分桶：year/month/day"),
+    granularity: Granularity | None = Query(None, description="时间粒度重分桶：year/quarter/month/week/day"),
     agg: AggFunction | None = Query(None, description="重分桶聚合函数：SUM/COUNT/AVG/MIN/MAX"),
     db: AsyncSession = Depends(get_db),
 ):

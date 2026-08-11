@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { GridLayout, useContainerWidth, type LayoutItem } from "react-grid-layout";
+import { GridLayout, type LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
+import html2canvas from "html2canvas";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -20,6 +23,9 @@ import {
   type VizDataTimeParams,
 } from "@/hooks/useVisualizations";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { useMeasuredWidth } from "@/hooks/useMeasuredWidth";
+import { DATE_PRESETS, computePresetRange, type DatePresetKey } from "@/lib/datePresets";
+import { InfoTip } from "@/components/dashboard/InfoTip";
 import { TextTileMarkdown } from "@/components/dashboard/TextTileMarkdown";
 import {
   KpiTileBody,
@@ -34,6 +40,10 @@ import {
   Maximize2,
   Loader2,
   LayoutGrid,
+  Download,
+  FileText,
+  Link2,
+  Info,
   X,
 } from "lucide-react";
 
@@ -42,15 +52,25 @@ import {
 interface GlobalTimeFilter {
   start: string;
   end: string;
-  granularity: string; // "" | "auto" | year/month/day
-  agg: string; // "" | "auto" | SUM/...
+  granularity: string; // "auto" | day/week/month/quarter/year
+  agg: string; // "auto" | SUM/...
 }
+
+/** Granularity selector is a segmented tab strip: 默认 | 日 | 周 | 月 | 季 | 年. */
+const GRANULARITY_TABS = [
+  { value: "auto", label: "默认" },
+  { value: "day", label: "日" },
+  { value: "week", label: "周" },
+  { value: "month", label: "月" },
+  { value: "quarter", label: "季" },
+  { value: "year", label: "年" },
+];
 
 function isFilterActive(f: GlobalTimeFilter): boolean {
   return !!(
     f.start ||
     f.end ||
-    (f.granularity && f.granularity !== "auto" && f.granularity !== "none") ||
+    (f.granularity && f.granularity !== "auto") ||
     (f.agg && f.agg !== "auto")
   );
 }
@@ -74,16 +94,13 @@ function VizTileBody({
   const dateColumn = (viz?.config_json.date_column as string) ?? "";
   const timeEnabled = !!dateColumn;
 
-  // "auto" resolves to the visualization's own time-profile defaults;
-  // "none" explicitly disables re-bucketing (param is never sent).
+  // "auto" resolves to the visualization's own time-profile defaults.
   const params: VizDataTimeParams = useMemo(() => {
     if (!timeEnabled) return {};
     const p: VizDataTimeParams = {};
     if (filter.start) p.start = filter.start;
     if (filter.end) p.end = filter.end;
-    if (filter.granularity === "none") {
-      // explicit no-bucketing — do not fall back to defaults
-    } else if (filter.granularity && filter.granularity !== "auto") {
+    if (filter.granularity && filter.granularity !== "auto") {
       p.granularity = filter.granularity;
     } else if (viz?.config_json.default_granularity) {
       p.granularity = viz.config_json.default_granularity as string;
@@ -102,11 +119,18 @@ function VizTileBody({
   );
 
   const showHint = filterActive && !timeEnabled;
+  // Charts fill the tile exactly (no scroll) so exports capture them whole;
+  // table tiles keep their own scrolling.
+  const isTable = data?.chart_type === "table";
 
   return (
-    <div className="flex h-full flex-col">
-      {showHint && <p className="px-2 pt-1 text-[11px] text-muted-foreground/70">不响应时间筛选</p>}
-      <div className="relative min-h-0 flex-1 overflow-auto">
+    <div className="relative h-full">
+      {showHint && (
+        <span className="absolute left-1.5 top-1.5 z-10 rounded bg-muted/90 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          不响应时间筛选
+        </span>
+      )}
+      <div className={isTable ? "h-full overflow-auto" : "h-full overflow-hidden"}>
         {isLoading || !data ? (
           <TileLoadingBody />
         ) : isError ? (
@@ -119,16 +143,18 @@ function VizTileBody({
             )}
           </div>
         ) : (
-          <VisualizationTileBody data={data} height={height} />
+          <VisualizationTileBody data={data} height={height} fill={!isTable} />
         )}
       </div>
     </div>
   );
 }
 
-// ── Tile shell (header + controls + body) ───────────────────────────────────
+// ── Tile frame: clean tile with a hover toolbar ─────────────────────────
+// No permanent header — the tile name lives in the toolbar's info tooltip,
+// keeping the dashboard overview quiet and WYSIWYG.
 
-function TileShell({
+function TileFrame({
   title,
   children,
   onRefresh,
@@ -142,40 +168,38 @@ function TileShell({
   onMaximize?: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-background shadow-sm">
-      <div className="flex items-center justify-between border-b px-2 py-1">
-        <p className="truncate text-xs font-medium text-muted-foreground" title={title}>
-          {title}
-        </p>
-        <div className="flex shrink-0 items-center gap-0.5">
-          {onRefresh && (
-            <button
-              type="button"
-              title="刷新瓦片"
-              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-              onClick={onRefresh}
-              disabled={refreshing}
-            >
-              {refreshing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-            </button>
-          )}
-          {onMaximize && (
-            <button
-              type="button"
-              title="全屏查看"
-              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-              onClick={onMaximize}
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border bg-background shadow-sm">
       <div className="min-h-0 flex-1">{children}</div>
+      <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-0.5 rounded-md border bg-background/95 p-0.5 shadow-sm opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <span title={`瓦片：${title}`} className="cursor-help p-1 text-muted-foreground">
+          <Info className="h-3.5 w-3.5" />
+        </span>
+        {onRefresh && (
+          <button
+            type="button"
+            title="刷新瓦片"
+            className="rounded p-1 text-muted-foreground hover:bg-muted"
+            onClick={onRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+          </button>
+        )}
+        {onMaximize && (
+          <button
+            type="button"
+            title="全屏查看"
+            className="rounded p-1 text-muted-foreground hover:bg-muted"
+            onClick={onMaximize}
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -199,10 +223,26 @@ export default function DashboardDisplayPage() {
     granularity: "auto",
     agg: "auto",
   });
+  // Which quick preset filled the date inputs (null = custom range)
+  const [activePreset, setActivePreset] = useState<DatePresetKey | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const filterActive = isFilterActive(filter);
 
-  // Grid container measurement (react-grid-layout v2 replaces WidthProvider)
-  const { width: gridWidth, mounted: gridMounted, containerRef: gridRef } = useContainerWidth();
+  const applyPreset = (key: DatePresetKey) => {
+    const range = computePresetRange(key);
+    setFilter((f) => ({ ...f, start: range.start, end: range.end }));
+    setActivePreset(key);
+  };
+
+  const clearFilter = () => {
+    setFilter({ start: "", end: "", granularity: "auto", agg: "auto" });
+    setActivePreset(null);
+  };
+
+  // Grid container measurement — ref-callback based so the late-rendered
+  // grid container (after loading) is measured correctly
+  const { width: gridWidth, mounted: gridMounted, containerRef: gridRef } = useMeasuredWidth();
 
   const tiles = useMemo(() => dashboard?.layout_json ?? [], [dashboard]);
   const sortedTiles = useMemo(() => [...tiles].sort((a, b) => a.y - b.y || a.x - b.x), [tiles]);
@@ -221,6 +261,48 @@ export default function DashboardDisplayPage() {
     } else if (tile.tile_type === "kpi_card" && tile.config) {
       queryClient.invalidateQueries({ queryKey: ["kpiTileData", tile.config.view_id] });
     }
+  };
+
+  // Refresh the whole dashboard: every visualization + KPI tile
+  const handleRefreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["visualizationData"] });
+    queryClient.invalidateQueries({ queryKey: ["kpiTileData"] });
+  };
+
+  // Export the rendered grid as PNG (bottom padding on the capture target
+  // protects bottom-edge content from html2canvas clipping)
+  const handleExportPng = async () => {
+    if (!exportRef.current) return;
+    setExporting(true);
+    try {
+      await new Promise((r) => setTimeout(r, 150));
+      const canvas = await html2canvas(exportRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      const link = document.createElement("a");
+      link.download = `${dashboard?.name ?? "数据看板"}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success("PNG 导出成功");
+    } catch {
+      toast.error("导出失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // PDF via the browser print dialog (print CSS hides chrome/controls)
+  const handleExportPdf = () => {
+    toast.info("请在打印对话框中选择「另存为 PDF」");
+    setTimeout(() => window.print(), 400);
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href).then(
+      () => toast.success("链接已复制到剪贴板"),
+      () => toast.error("复制失败"),
+    );
   };
 
   const tileTitle = (tile: DashboardTile): string => {
@@ -265,11 +347,11 @@ export default function DashboardDisplayPage() {
       <div>
         <Button variant="ghost" size="sm" onClick={() => navigate("/dashboards")}>
           <ArrowLeft className="mr-1 h-4 w-4" />
-          返回仪表盘列表
+          返回看板列表
         </Button>
         <div className="mt-8 rounded-md bg-muted/30 p-16 text-center">
           <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-lg text-muted-foreground">仪表盘不存在</p>
+          <p className="text-lg text-muted-foreground">看板不存在</p>
         </div>
       </div>
     );
@@ -290,7 +372,27 @@ export default function DashboardDisplayPage() {
             )}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 print:hidden">
+          <Button variant="outline" size="sm" onClick={handleRefreshAll}>
+            <RefreshCw className="mr-1 h-4 w-4" />
+            刷新
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportPng} disabled={exporting}>
+            {exporting ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-1 h-4 w-4" />
+            )}
+            导出 PNG
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportPdf}>
+            <FileText className="mr-1 h-4 w-4" />
+            导出 PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleCopyLink}>
+            <Link2 className="mr-1 h-4 w-4" />
+            复制链接
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -311,102 +413,114 @@ export default function DashboardDisplayPage() {
         </div>
       </div>
 
-      {/* Global time controls */}
-      <Card className="mb-4">
-        <CardContent className="flex flex-wrap items-end gap-3 py-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium">开始日期</label>
-            <input
-              type="date"
-              value={filter.start}
-              onChange={(e) => setFilter((f) => ({ ...f, start: e.target.value }))}
-              className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium">结束日期</label>
-            <input
-              type="date"
-              value={filter.end}
-              onChange={(e) => setFilter((f) => ({ ...f, end: e.target.value }))}
-              className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-            />
-          </div>
-          <div className="w-36">
-            <label className="mb-1 block text-xs font-medium">时间粒度</label>
-            <Select
-              value={filter.granularity}
-              onValueChange={(v) => setFilter((f) => ({ ...f, granularity: v ?? "auto" }))}
-            >
-              <SelectTrigger>
-                <SelectValue>
-                  {filter.granularity === "auto"
-                    ? "按可视化默认"
-                    : filter.granularity === "year"
-                      ? "年"
-                      : filter.granularity === "month"
-                        ? "月"
-                        : filter.granularity === "day"
-                          ? "日"
-                          : "不重分桶"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                align="start"
-                sideOffset={4}
-                alignItemWithTrigger={false}
-                className="bg-background"
+      {/* Global time controls — tools only; presets sit beside the date pickers */}
+      <Card className="mb-4 print:hidden">
+        <CardContent className="py-3">
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+            <div className="flex h-9 items-center">
+              <InfoTip text="时间筛选仅作用于配置了时间列的可视化瓦片；其他瓦片保持不变。" />
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {DATE_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => applyPreset(p.key)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1.5 text-sm transition-colors",
+                    activePreset === p.key
+                      ? "border-primary bg-primary/10 font-medium text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">开始日期</label>
+              <input
+                type="date"
+                value={filter.start}
+                onChange={(e) => {
+                  setFilter((f) => ({ ...f, start: e.target.value }));
+                  setActivePreset(null);
+                }}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">结束日期</label>
+              <input
+                type="date"
+                value={filter.end}
+                onChange={(e) => {
+                  setFilter((f) => ({ ...f, end: e.target.value }));
+                  setActivePreset(null);
+                }}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">时间粒度</label>
+              <div className="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-input bg-transparent">
+                {GRANULARITY_TABS.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setFilter((f) => ({ ...f, granularity: t.value }))}
+                    className={cn(
+                      "border-r border-input px-3 text-sm transition-colors last:border-r-0",
+                      filter.granularity === t.value
+                        ? "bg-primary font-medium text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="w-36">
+              <label className="mb-1 block text-xs font-medium">聚合方式</label>
+              <Select
+                value={filter.agg}
+                onValueChange={(v) => setFilter((f) => ({ ...f, agg: v ?? "auto" }))}
               >
-                <SelectItem value="auto">按可视化默认</SelectItem>
-                <SelectItem value="none">不重分桶</SelectItem>
-                <SelectItem value="year">年</SelectItem>
-                <SelectItem value="month">月</SelectItem>
-                <SelectItem value="day">日</SelectItem>
-              </SelectContent>
-            </Select>
+                <SelectTrigger>
+                  <SelectValue>
+                    {filter.agg === "auto"
+                      ? "按可视化默认"
+                      : ({
+                          SUM: "求和",
+                          COUNT: "计数",
+                          AVG: "平均值",
+                          MIN: "最小值",
+                          MAX: "最大值",
+                        }[filter.agg] ?? filter.agg)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  align="start"
+                  sideOffset={4}
+                  alignItemWithTrigger={false}
+                  className="bg-background"
+                >
+                  <SelectItem value="auto">按可视化默认</SelectItem>
+                  <SelectItem value="SUM">求和</SelectItem>
+                  <SelectItem value="COUNT">计数</SelectItem>
+                  <SelectItem value="AVG">平均值</SelectItem>
+                  <SelectItem value="MIN">最小值</SelectItem>
+                  <SelectItem value="MAX">最大值</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {filterActive && (
+              <Button variant="ghost" size="sm" onClick={clearFilter}>
+                清除筛选
+              </Button>
+            )}
           </div>
-          <div className="w-36">
-            <label className="mb-1 block text-xs font-medium">聚合方式</label>
-            <Select
-              value={filter.agg}
-              onValueChange={(v) => setFilter((f) => ({ ...f, agg: v ?? "auto" }))}
-            >
-              <SelectTrigger>
-                <SelectValue>
-                  {filter.agg === "auto"
-                    ? "按可视化默认"
-                    : ({ SUM: "求和", COUNT: "计数", AVG: "平均值", MIN: "最小值", MAX: "最大值" }[
-                        filter.agg
-                      ] ?? filter.agg)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                align="start"
-                sideOffset={4}
-                alignItemWithTrigger={false}
-                className="bg-background"
-              >
-                <SelectItem value="auto">按可视化默认</SelectItem>
-                <SelectItem value="SUM">求和</SelectItem>
-                <SelectItem value="COUNT">计数</SelectItem>
-                <SelectItem value="AVG">平均值</SelectItem>
-                <SelectItem value="MIN">最小值</SelectItem>
-                <SelectItem value="MAX">最大值</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {filterActive && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setFilter({ start: "", end: "", granularity: "auto", agg: "auto" })}
-            >
-              清除筛选
-            </Button>
-          )}
-          <p className="text-xs text-muted-foreground">
-            时间筛选仅作用于配置了时间列的可视化瓦片。
-          </p>
         </CardContent>
       </Card>
 
@@ -414,7 +528,7 @@ export default function DashboardDisplayPage() {
       {sortedTiles.length === 0 ? (
         <div className="rounded-md bg-muted/30 p-16 text-center">
           <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-lg text-muted-foreground">该仪表盘暂无瓦片</p>
+          <p className="text-lg text-muted-foreground">该看板暂无瓦片</p>
           <Button
             className="mt-4"
             variant="outline"
@@ -423,49 +537,50 @@ export default function DashboardDisplayPage() {
             去编辑
           </Button>
         </div>
-      ) : isDesktop ? (
-        <div ref={gridRef as React.RefObject<HTMLDivElement>}>
-          {gridMounted && (
-            <GridLayout
-              width={gridWidth}
-              layout={layout}
-              gridConfig={{ cols: 12, rowHeight: 80, margin: [12, 12] }}
-              dragConfig={{ enabled: false }}
-              resizeConfig={{ enabled: false }}
-            >
-              {tiles.map((tile) => (
-                <div key={tile.i}>
-                  <TileShell
+      ) : (
+        /* pb-4 protects bottom-edge content during PNG export (html2canvas) */
+        <div ref={exportRef} className="pb-4">
+          {isDesktop ? (
+            <div ref={gridRef}>
+              {gridMounted && (
+                <GridLayout
+                  width={gridWidth}
+                  layout={layout}
+                  gridConfig={{ cols: 12, rowHeight: 80, margin: [12, 12] }}
+                  dragConfig={{ enabled: false }}
+                  resizeConfig={{ enabled: false }}
+                >
+                  {tiles.map((tile) => (
+                    <div key={tile.i}>
+                      <TileFrame
+                        title={tileTitle(tile)}
+                        onRefresh={tile.tile_type !== "text" ? () => refreshTile(tile) : undefined}
+                        onMaximize={() => setMaxTile(tile)}
+                      >
+                        {renderTileBody(tile, Math.max(160, tile.h * 92 - 30))}
+                      </TileFrame>
+                    </div>
+                  ))}
+                </GridLayout>
+              )}
+            </div>
+          ) : (
+            /* Mobile: read-only vertical stacking (no drag/resize) */
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">小屏模式：瓦片按只读单列展示。</p>
+              {sortedTiles.map((tile) => (
+                <div key={tile.i} style={{ height: tile.tile_type === "kpi_card" ? 160 : 360 }}>
+                  <TileFrame
                     title={tileTitle(tile)}
                     onRefresh={tile.tile_type !== "text" ? () => refreshTile(tile) : undefined}
                     onMaximize={() => setMaxTile(tile)}
                   >
-                    {renderTileBody(tile, Math.max(160, tile.h * 92 - 90))}
-                  </TileShell>
+                    {renderTileBody(tile, 260)}
+                  </TileFrame>
                 </div>
               ))}
-            </GridLayout>
-          )}
-        </div>
-      ) : (
-        /* Mobile: read-only vertical stacking (no drag/resize) */
-        <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">小屏模式：瓦片按只读单列展示。</p>
-          {sortedTiles.map((tile) => (
-            <div
-              key={tile.i}
-              className="rounded-lg border bg-background shadow-sm"
-              style={{ height: tile.tile_type === "kpi_card" ? 160 : 360 }}
-            >
-              <TileShell
-                title={tileTitle(tile)}
-                onRefresh={tile.tile_type !== "text" ? () => refreshTile(tile) : undefined}
-                onMaximize={() => setMaxTile(tile)}
-              >
-                {renderTileBody(tile, 260)}
-              </TileShell>
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -491,7 +606,7 @@ export default function DashboardDisplayPage() {
           <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
             <h3 className="text-lg font-semibold">确认删除</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              确定要删除仪表盘「{dashboard.name}」吗？此操作不可撤销。
+              确定要删除看板「{dashboard.name}」吗？此操作不可撤销。
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setDeleteOpen(false)}>
