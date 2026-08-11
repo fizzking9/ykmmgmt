@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { GridLayout, useContainerWidth, type LayoutItem } from "react-grid-layout";
+import { GridLayout, type LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import html2canvas from "html2canvas";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import {
   type VizDataTimeParams,
 } from "@/hooks/useVisualizations";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { useMeasuredWidth } from "@/hooks/useMeasuredWidth";
 import { DATE_PRESETS, computePresetRange, type DatePresetKey } from "@/lib/datePresets";
 import { InfoTip } from "@/components/dashboard/InfoTip";
 import { TextTileMarkdown } from "@/components/dashboard/TextTileMarkdown";
@@ -118,6 +119,9 @@ function VizTileBody({
   );
 
   const showHint = filterActive && !timeEnabled;
+  // Charts fill the tile exactly (no scroll) so exports capture them whole;
+  // table tiles keep their own scrolling.
+  const isTable = data?.chart_type === "table";
 
   return (
     <div className="relative h-full">
@@ -126,7 +130,7 @@ function VizTileBody({
           不响应时间筛选
         </span>
       )}
-      <div className="h-full overflow-auto">
+      <div className={isTable ? "h-full overflow-auto" : "h-full overflow-hidden"}>
         {isLoading || !data ? (
           <TileLoadingBody />
         ) : isError ? (
@@ -139,7 +143,7 @@ function VizTileBody({
             )}
           </div>
         ) : (
-          <VisualizationTileBody data={data} height={height} />
+          <VisualizationTileBody data={data} height={height} fill={!isTable} />
         )}
       </div>
     </div>
@@ -236,8 +240,9 @@ export default function DashboardDisplayPage() {
     setActivePreset(null);
   };
 
-  // Grid container measurement (react-grid-layout v2 replaces WidthProvider)
-  const { width: gridWidth, mounted: gridMounted, containerRef: gridRef } = useContainerWidth();
+  // Grid container measurement — ref-callback based so the late-rendered
+  // grid container (after loading) is measured correctly
+  const { width: gridWidth, mounted: gridMounted, containerRef: gridRef } = useMeasuredWidth();
 
   const tiles = useMemo(() => dashboard?.layout_json ?? [], [dashboard]);
   const sortedTiles = useMemo(() => [...tiles].sort((a, b) => a.y - b.y || a.x - b.x), [tiles]);
@@ -408,15 +413,14 @@ export default function DashboardDisplayPage() {
         </div>
       </div>
 
-      {/* Global time controls */}
+      {/* Global time controls — tools only; presets sit beside the date pickers */}
       <Card className="mb-4 print:hidden">
-        <CardContent className="space-y-3 py-3">
-          <div className="flex items-center gap-1.5 text-sm font-medium">
-            时间筛选
-            <InfoTip text="时间筛选仅作用于配置了时间列的可视化瓦片；其他瓦片保持不变。" />
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-wrap gap-1.5">
+        <CardContent className="py-3">
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+            <div className="flex h-9 items-center">
+              <InfoTip text="时间筛选仅作用于配置了时间列的可视化瓦片；其他瓦片保持不变。" />
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
               {DATE_PRESETS.map((p) => (
                 <button
                   key={p.key}
@@ -537,7 +541,7 @@ export default function DashboardDisplayPage() {
         /* pb-4 protects bottom-edge content during PNG export (html2canvas) */
         <div ref={exportRef} className="pb-4">
           {isDesktop ? (
-            <div ref={gridRef as React.RefObject<HTMLDivElement>}>
+            <div ref={gridRef}>
               {gridMounted && (
                 <GridLayout
                   width={gridWidth}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { GridLayout, useContainerWidth, type LayoutItem } from "react-grid-layout";
+import { GridLayout, type LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
 import { useVisualizations, useVisualizationTileData } from "@/hooks/useVisualizations";
 import { useViews, useViewFullData } from "@/hooks/useViews";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { useMeasuredWidth } from "@/hooks/useMeasuredWidth";
 import { CHART_TYPES } from "@/contexts/VisualizationBuilderContext";
 import { TextTileMarkdown } from "@/components/dashboard/TextTileMarkdown";
 import {
@@ -253,19 +254,14 @@ function KpiTilePanel({
 
 // ── Live visualization preview inside a builder tile ─────────────────
 
-function BuilderVizPreview({
-  visualizationId,
-  height,
-}: {
-  visualizationId?: string;
-  height: number;
-}) {
+function BuilderVizPreview({ visualizationId }: { visualizationId?: string }) {
   const { data, isLoading } = useVisualizationTileData(visualizationId, {});
   if (!visualizationId) {
     return <p className="p-3 text-center text-sm text-red-600">未选择可视化</p>;
   }
   if (isLoading || !data) return <TileLoadingBody />;
-  return <VisualizationTileBody data={data} height={height} />;
+  // Fill the tile exactly — WYSIWYG, no scrolling
+  return <VisualizationTileBody data={data} fill={data.chart_type !== "table"} />;
 }
 
 // ── Builder tile chrome: hover drag pill + action toolbar ────────────
@@ -342,14 +338,15 @@ export default function DashboardBuilderPage() {
 
   const loadedRef = useRef<string | null>(null);
 
-  // Grid container measurement (react-grid-layout v2 replaces WidthProvider)
-  const { width: gridWidth, mounted: gridMounted, containerRef: gridRef } = useContainerWidth();
+  // Grid container measurement — ref-callback based so late/conditional
+  // containers (loaded tiles, expanded popup) are measured correctly
+  const { width: gridWidth, mounted: gridMounted, containerRef: gridRef } = useMeasuredWidth();
   // Second measurement for the expanded (full-screen WYSIWYG) canvas
   const {
     width: expandWidth,
     mounted: expandMounted,
     containerRef: expandRef,
-  } = useContainerWidth();
+  } = useMeasuredWidth();
 
   // Canvas expansion + tile preview
   const [canvasExpanded, setCanvasExpanded] = useState(false);
@@ -495,7 +492,7 @@ export default function DashboardBuilderPage() {
 
   // ── Tile rendering inside the grid ─────────────────────────────────────
 
-  const renderTileBody = (tile: DashboardTile, height: number) => {
+  const renderTileBody = (tile: DashboardTile) => {
     switch (tile.tile_type) {
       case "visualization": {
         const exists = tile.visualization_id ? vizNameById.has(tile.visualization_id) : false;
@@ -503,9 +500,7 @@ export default function DashboardBuilderPage() {
           return <p className="p-3 text-center text-sm text-red-600">可视化不存在或已被删除</p>;
         }
         // WYSIWYG: render the actual chart inside the canvas
-        return (
-          <BuilderVizPreview visualizationId={tile.visualization_id ?? undefined} height={height} />
-        );
+        return <BuilderVizPreview visualizationId={tile.visualization_id ?? undefined} />;
       }
       case "text":
         return (
@@ -718,7 +713,7 @@ export default function DashboardBuilderPage() {
                 暂无瓦片 — 从左侧添加可视化、文本或 KPI 卡
               </div>
             ) : (
-              <div ref={gridRef as React.RefObject<HTMLDivElement>}>
+              <div ref={gridRef}>
                 {gridMounted && (
                   <GridLayout
                     width={gridWidth}
@@ -738,7 +733,7 @@ export default function DashboardBuilderPage() {
                           onPreview={() => setPreviewTile(tile)}
                           onRemove={() => builder.removeTile(tile.i)}
                         >
-                          {renderTileBody(tile, Math.max(120, tile.h * 92 - 30))}
+                          {renderTileBody(tile)}
                         </BuilderTileChrome>
                       </div>
                     ))}
@@ -752,41 +747,44 @@ export default function DashboardBuilderPage() {
 
       {/* Expanded full-screen canvas — WYSIWYG rearranging */}
       {canvasExpanded && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background">
-          <div className="flex items-center justify-between border-b px-4 py-2">
-            <p className="text-sm font-medium">{state.name || "未命名看板"} — 画布预览</p>
-            <Button variant="outline" size="sm" onClick={() => setCanvasExpanded(false)}>
-              <Minimize2 className="mr-1 h-4 w-4" />
-              退出扩展画布
-            </Button>
-          </div>
-          <div className="flex-1 overflow-auto p-4">
-            <div ref={expandRef as React.RefObject<HTMLDivElement>}>
-              {expandMounted && (
-                <GridLayout
-                  width={expandWidth}
-                  layout={layout}
-                  gridConfig={{ cols: 12, rowHeight: 80, margin: [12, 12] }}
-                  dragConfig={{ handle: ".tile-drag-handle" }}
-                  onLayoutChange={handleLayoutChange}
-                >
-                  {state.tiles.map((tile) => (
-                    <div key={tile.i} title={tileTypeLabel(tile)}>
-                      <BuilderTileChrome
-                        onConfigure={
-                          tile.tile_type === "visualization" && tile.visualization_id
-                            ? () => navigate(`/visualizations/builder/${tile.visualization_id}`)
-                            : undefined
-                        }
-                        onPreview={() => setPreviewTile(tile)}
-                        onRemove={() => builder.removeTile(tile.i)}
-                      >
-                        {renderTileBody(tile, Math.max(120, tile.h * 92 - 30))}
-                      </BuilderTileChrome>
-                    </div>
-                  ))}
-                </GridLayout>
-              )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          {/* Centered bounded panel — the visible frame marks the valid canvas area */}
+          <div className="flex h-[92vh] w-[min(1500px,96vw)] flex-col rounded-lg border bg-background shadow-xl">
+            <div className="flex items-center justify-between border-b px-4 py-2">
+              <p className="text-sm font-medium">{state.name || "未命名看板"} — 画布预览</p>
+              <Button variant="outline" size="sm" onClick={() => setCanvasExpanded(false)}>
+                <Minimize2 className="mr-1 h-4 w-4" />
+                退出扩展画布
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4">
+              <div ref={expandRef}>
+                {expandMounted && (
+                  <GridLayout
+                    width={expandWidth}
+                    layout={layout}
+                    gridConfig={{ cols: 12, rowHeight: 80, margin: [12, 12] }}
+                    dragConfig={{ handle: ".tile-drag-handle" }}
+                    onLayoutChange={handleLayoutChange}
+                  >
+                    {state.tiles.map((tile) => (
+                      <div key={tile.i} title={tileTypeLabel(tile)}>
+                        <BuilderTileChrome
+                          onConfigure={
+                            tile.tile_type === "visualization" && tile.visualization_id
+                              ? () => navigate(`/visualizations/builder/${tile.visualization_id}`)
+                              : undefined
+                          }
+                          onPreview={() => setPreviewTile(tile)}
+                          onRemove={() => builder.removeTile(tile.i)}
+                        >
+                          {renderTileBody(tile)}
+                        </BuilderTileChrome>
+                      </div>
+                    ))}
+                  </GridLayout>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -802,7 +800,7 @@ export default function DashboardBuilderPage() {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="flex-1 overflow-auto p-4">{renderTileBody(previewTile, 520)}</div>
+            <div className="flex-1 overflow-auto p-4">{renderTileBody(previewTile)}</div>
           </div>
         </div>
       )}

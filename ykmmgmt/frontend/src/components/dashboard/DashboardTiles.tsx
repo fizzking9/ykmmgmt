@@ -69,9 +69,12 @@ export function KpiTileBody({ config }: { config: KpiTileConfig }) {
 export function VisualizationTileBody({
   data,
   height,
+  fill = false,
 }: {
   data: VisualizationDataResponse;
   height?: number;
+  /** Fill the tile exactly (no scroll) — used on dashboard pages. */
+  fill?: boolean;
 }) {
   return (
     <VisualizationRenderer
@@ -80,6 +83,7 @@ export function VisualizationTileBody({
       columns={data.columns}
       rows={data.rows}
       height={height ?? 300}
+      fill={fill}
     />
   );
 }
