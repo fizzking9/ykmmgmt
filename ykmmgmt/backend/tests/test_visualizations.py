@@ -420,3 +420,183 @@ async def test_get_visualization_data_not_found():
         fake_id = str(uuid.uuid4())
         resp = await client.get(f"/api/visualizations/{fake_id}/data")
         assert resp.status_code == 404
+
+
+# ── Time-Profile (start/end/granularity/agg) tests ────────────────────────
+
+
+async def _create_time_view(client: AsyncClient) -> str:
+    """Helper: create a view exposing a datetime column + a numeric column."""
+    view_config = {
+        "from_tables": ["refund_orders"],
+        "joins": [],
+        "columns": [
+            {"table": "refund_orders", "column": "record_created_at", "alias": None},
+            {"table": "refund_orders", "column": "refund_amount", "alias": None},
+        ],
+        "computed_columns": [],
+        "selected_computed_columns": [],
+        "filters": [],
+        "group_by": [],
+        "aggregations": [],
+    }
+    resp = await client.post(
+        "/api/views",
+        json={"name": _unique_name("时间视图"), "description": "time", "config_json": view_config},
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+async def _create_time_viz(client: AsyncClient, view_id: str, *, with_date_column: bool) -> str:
+    """Helper: create a line viz, optionally with a date_column time profile."""
+    config = {"x_column": "record_created_at", "y_columns": ["refund_amount"]}
+    if with_date_column:
+        config["date_column"] = "record_created_at"
+        config["default_granularity"] = "day"
+        config["default_agg"] = "SUM"
+    resp = await client.post(
+        "/api/visualizations",
+        json={
+            "name": _unique_name("时间可视化"),
+            "view_id": view_id,
+            "chart_type": "line",
+            "config_json": config,
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_data_time_filter_narrows_rows():
+    """start/end params narrow rows to the given date range."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_time_view(client)
+        viz_id = await _create_time_viz(client, view_id, with_date_column=True)
+
+        base = await client.get(f"/api/visualizations/{viz_id}/data")
+        assert base.status_code == 200
+        base_rows = base.json()["rows"]
+
+        filtered = await client.get(
+            f"/api/visualizations/{viz_id}/data",
+            params={"start": "2026-06-01", "end": "2026-06-30"},
+        )
+        assert filtered.status_code == 200
+        rows = filtered.json()["rows"]
+        assert len(rows) <= len(base_rows)
+        for row in rows:
+            date_part = row["record_created_at"][:10]
+            assert "2026-06-01" <= date_part <= "2026-06-30"
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_data_granularity_rebuckets_monthly():
+    """granularity=month re-buckets daily rows into monthly SUM buckets."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_time_view(client)
+        viz_id = await _create_time_viz(client, view_id, with_date_column=True)
+
+        base = await client.get(f"/api/visualizations/{viz_id}/data")
+        base_rows = base.json()["rows"]
+
+        monthly = await client.get(
+            f"/api/visualizations/{viz_id}/data",
+            params={"granularity": "month", "agg": "SUM"},
+        )
+        assert monthly.status_code == 200
+        rows = monthly.json()["rows"]
+        assert len(rows) <= len(base_rows)
+        # Every bucket starts on the 1st of a month
+        for row in rows:
+            assert row["record_created_at"][:10].endswith("-01")
+        # Monthly sums preserve the overall total (NULL-date rows excluded)
+        base_total = sum(
+            float(r["refund_amount"])
+            for r in base_rows
+            if r["refund_amount"] is not None and r["record_created_at"] is not None
+        )
+        monthly_total = sum(float(r["refund_amount"]) for r in rows if r["refund_amount"] is not None)
+        assert abs(base_total - monthly_total) < 0.01
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_data_time_params_ignored_without_date_column():
+    """Time params are ignored when the viz has no date_column profile."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_time_view(client)
+        viz_id = await _create_time_viz(client, view_id, with_date_column=False)
+
+        plain = await client.get(f"/api/visualizations/{viz_id}/data")
+        assert plain.status_code == 200
+        overridden = await client.get(
+            f"/api/visualizations/{viz_id}/data",
+            params={
+                "start": "2026-06-01",
+                "end": "2026-06-30",
+                "granularity": "month",
+                "agg": "SUM",
+            },
+        )
+        assert overridden.status_code == 200
+        assert overridden.json()["rows"] == plain.json()["rows"]
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_data_invalid_granularity_rejected():
+    """Invalid granularity is rejected with 422."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_time_view(client)
+        viz_id = await _create_time_viz(client, view_id, with_date_column=True)
+
+        resp = await client.get(
+            f"/api/visualizations/{viz_id}/data", params={"granularity": "hour"}
+        )
+        assert resp.status_code == 422
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_data_invalid_agg_rejected():
+    """Invalid agg function is rejected with 422."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_time_view(client)
+        viz_id = await _create_time_viz(client, view_id, with_date_column=True)
+
+        resp = await client.get(
+            f"/api/visualizations/{viz_id}/data",
+            params={"granularity": "month", "agg": "MEDIAN"},
+        )
+        assert resp.status_code == 422
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_data_invalid_start_date_rejected():
+    """Malformed start date is rejected with 422 and a Chinese message."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_time_view(client)
+        viz_id = await _create_time_viz(client, view_id, with_date_column=True)
+
+        resp = await client.get(
+            f"/api/visualizations/{viz_id}/data", params={"start": "not-a-date"}
+        )
+        assert resp.status_code == 422
+        assert "格式无效" in resp.json()["detail"]
+
+        await _cleanup(client, view_id, [viz_id])

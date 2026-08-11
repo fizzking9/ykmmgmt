@@ -1,3 +1,4 @@
+from app.models.dashboard import Dashboard
 from app.models.datasource import DataSource
 from app.models.import_job import ImportJob
 from app.models.refund_order import RefundOrder
@@ -7,6 +8,7 @@ from app.models.visualization import Visualization
 from app.models.wallet_withdrawal import WalletWithdrawal
 
 __all__ = [
+    "Dashboard",
     "DataSource",
     "ImportJob",
     "ServiceRefundWorkOrder",

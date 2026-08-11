@@ -177,22 +177,24 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 **Goal:** Compose, view, and manage dashboards from saved visualizations with flexible grid positioning and sidebar navigation.
 
-- [ ] Backend: Dashboard model — `name`, `description`, `layout_json` (array of `{visualization_id, x, y, width, height}` grid positions), `created_at`, `updated_at`
-- [ ] Backend: `POST /api/dashboards` — create a dashboard
-- [ ] Backend: `GET /api/dashboards` — list all dashboards
-- [ ] Backend: `GET /api/dashboards/{id}` — full dashboard config with visualization data for rendering
-- [ ] Backend: `PUT /api/dashboards/{id}` — update dashboard layout
-- [ ] Backend: `DELETE /api/dashboards/{id}` — delete a dashboard
-- [ ] Frontend: Dashboard builder page — grid canvas using `react-grid-layout` to place visualization tiles
-- [ ] Frontend: "Add Visualization" panel — pick from saved visualizations (Phase 8), drag onto grid
-- [ ] Frontend: Tile resize and reposition — each visualization tile is draggable and resizable on the grid
-- [ ] Frontend: Remove tile, adjust tile dimensions
-- [ ] Frontend: Save dashboard — persist layout to backend
-- [ ] Frontend: Sidebar — add collapsible "Dashboards" parent section; each saved dashboard is a child nav item using the dashboard's name
-- [ ] Frontend: Dashboard display page — render the grid layout with all visualization tiles fetching live data
-- [ ] Frontend: Edit button on dashboard page — opens the builder pre-filled
-- [ ] Frontend: Delete button with confirmation on dashboard page
-- [ ] Frontend: Dashboard list/manage page accessible from parent "Dashboards" item (create, rename, delete)
+- [x] Backend: Dashboard model — `name` (unique), `description`, `layout_json` (array of tiles: `{i, tile_type, visualization_id?, x, y, w, h, content?, config?}`), `created_at`, `updated_at`
+- [x] Backend: `POST /api/dashboards` — create a dashboard (409 on duplicate name, 422 on invalid visualization/view references)
+- [x] Backend: `GET /api/dashboards` — list all dashboards (incl. tile count)
+- [x] Backend: `GET /api/dashboards/{id}` — full dashboard config with layout_json
+- [x] Backend: `PUT /api/dashboards/{id}` — update dashboard name/description/layout
+- [x] Backend: `DELETE /api/dashboards/{id}` — delete a dashboard
+- [x] Backend: Time-profile overrides on `GET /api/visualizations/{id}/data` — optional `start`/`end`/`granularity`/`agg` params, parameterized, active only when the visualization declares `config_json.date_column` (date filter narrows rows; granularity re-buckets with SUM/COUNT/AVG/MIN/MAX)
+- [x] Frontend: Visualization Builder 时间配置 section — date_column picker (datetime columns of the view) + default granularity (年/月/日) + default aggregation
+- [x] Frontend: Dashboard builder page — grid canvas using `react-grid-layout` (v2) with drag/resize; three tile types: visualization, text/markdown (inline editor + preview), ad-hoc KPI card (view + value column + label + aggregation, aggregated client-side)
+- [x] Frontend: "添加可视化" panel — pick from saved visualizations (Phase 8) and add onto the grid
+- [x] Frontend: Remove tile, adjust tile dimensions via resize handles
+- [x] Frontend: Save dashboard — persist layout to backend; name-conflict flow (overwrite confirmation + rename-on-409 dialog) mirroring views/visualizations
+- [x] Frontend: DashboardBuilderContext above the router — builder state survives navigation
+- [x] Frontend: Sidebar — collapsible "仪表盘" parent section linking to the list page; each saved dashboard is a child nav item by name; explicit isLinkActive so `/dashboards/builder*` does not highlight the parent
+- [x] Frontend: Dashboard display page — read-only grid with live tile data, per-tile manual refresh, full-screen single-tile view, 编辑/删除 buttons
+- [x] Frontend: Global time controls — date range + granularity (年/月/日/不重分桶/按可视化默认) + aggregation selector; apply only to tiles whose visualization has `date_column`; others show a "不响应时间筛选" hint
+- [x] Frontend: Dashboard list/manage page — name, description, tile count, sortable created/updated, 新建仪表盘, per-row 查看 / 编辑 / 重命名 / 删除 (unique-name enforcement)
+- [x] Frontend: Responsive — desktop-first grid; below `lg` tiles stack read-only in a single column; builder editing gated behind a desktop-viewport hint
 
 ---
 

@@ -103,9 +103,7 @@ export function VisualizationRenderer({
           />
         );
       case "pie":
-        return (
-          <PieChartPreview config={config} rows={rows} colors={colors} height={chartHeight} />
-        );
+        return <PieChartPreview config={config} rows={rows} colors={colors} height={chartHeight} />;
       case "scatter":
         return (
           <ScatterChartPreview

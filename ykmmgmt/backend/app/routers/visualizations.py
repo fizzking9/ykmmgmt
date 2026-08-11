@@ -1,9 +1,11 @@
 """Visualization CRUD endpoints — /api/visualizations."""
 
 import datetime as dt
+import re
 import uuid
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -155,9 +157,164 @@ async def delete_visualization(viz_id: uuid.UUID, db: AsyncSession = Depends(get
 # ── Data Endpoint ───────────────────────────────────────────────────────────
 
 
+Granularity = Literal["year", "month", "day"]
+AggFunction = Literal["SUM", "COUNT", "AVG", "MIN", "MAX"]
+
+
+def _parse_iso_datetime(value: str, label: str) -> dt.datetime:
+    """Parse an ISO date or datetime string; raise 422 (Chinese) on failure."""
+    try:
+        return dt.datetime.fromisoformat(value)
+    except ValueError:
+        pass
+    try:
+        return dt.datetime.combine(dt.date.fromisoformat(value), dt.time.min)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{label}格式无效: '{value}'，请使用 ISO 日期格式（如 2026-01-01）",
+        ) from e
+
+
+async def _apply_time_profile(
+    db: AsyncSession,
+    base_sql: str,
+    params: dict,
+    date_column: str,
+    start: str | None,
+    end: str | None,
+    granularity: Granularity | None,
+    agg: AggFunction | None,
+) -> tuple[str, dict]:
+    """Wrap the base query with a parameterized date filter.
+
+    Values stay bound — never interpolated. Granularity re-bucketing is
+    applied as post-processing in ``_rebucket_rows`` (views may mix column
+    types, which SQL-level SUM() cannot handle generically).
+    """
+    if not re.fullmatch(r"\w+", date_column):
+        raise HTTPException(status_code=422, detail=f"无效的时间列名: '{date_column}'")
+    quoted = f'"{date_column}"'
+
+    merged = dict(params)
+    where_parts: list[str] = []
+    if start:
+        merged["tp_start"] = _parse_iso_datetime(start, "起始时间")
+        where_parts.append(f"{quoted} >= :tp_start")
+    if end:
+        merged["tp_end"] = _parse_iso_datetime(end, "结束时间")
+        where_parts.append(f"{quoted} <= :tp_end")
+
+    sql = base_sql
+    if where_parts:
+        sql = f"SELECT * FROM ({sql}) AS _tf WHERE {' AND '.join(where_parts)}"
+
+    return sql, merged
+
+
+def _bucket_key(value: object, granularity: Granularity) -> dt.datetime | None:
+    """Truncate a date/datetime (or ISO string) to the requested bucket."""
+    d: dt.datetime | dt.date | None
+    if isinstance(value, dt.datetime):
+        d = value
+    elif isinstance(value, dt.date):
+        d = value
+    elif isinstance(value, str):
+        try:
+            d = dt.datetime.fromisoformat(value)
+        except ValueError:
+            try:
+                d = dt.date.fromisoformat(value)
+            except ValueError:
+                return None
+    else:
+        return None
+    if granularity == "year":
+        return dt.datetime(d.year, 1, 1)
+    if granularity == "month":
+        return dt.datetime(d.year, d.month, 1)
+    return dt.datetime(d.year, d.month, d.day)
+
+
+def _rebucket_rows(
+    rows: list[dict],
+    date_column: str,
+    granularity: Granularity,
+    agg: AggFunction,
+) -> tuple[list[str], list[dict]]:
+    """Group rows into time buckets and aggregate numeric columns client-side.
+
+    Non-numeric columns are skipped (e.g. text categories) — SQL-level
+    SUM() would fail on mixed-type view output. Rows with an unparseable
+    date form no meaningful bucket and are dropped.
+    """
+    buckets: dict[dt.datetime, list[dict]] = {}
+    value_cols: list[str] = []
+    for row in rows:
+        if date_column not in row:
+            raise HTTPException(
+                status_code=422,
+                detail=f"时间列 '{date_column}' 不在视图输出列中",
+            )
+        key = _bucket_key(row[date_column], granularity)
+        if key is None:
+            continue
+        buckets.setdefault(key, []).append(row)
+        if not value_cols:
+            value_cols = [c for c in row.keys() if c != date_column]
+
+    result_rows: list[dict] = []
+    for key in sorted(buckets):
+        group = buckets[key]
+        out: dict = {date_column: key.isoformat()}
+        for col in value_cols:
+            numbers: list[float] = []
+            non_null = 0
+            for row in group:
+                val = row.get(col)
+                if val is None:
+                    continue
+                non_null += 1
+                try:
+                    numbers.append(float(val))
+                except (TypeError, ValueError):
+                    continue
+            if agg == "COUNT":
+                out[col] = non_null
+            elif numbers:
+                if agg == "SUM":
+                    out[col] = sum(numbers)
+                elif agg == "AVG":
+                    out[col] = sum(numbers) / len(numbers)
+                elif agg == "MIN":
+                    out[col] = min(numbers)
+                else:  # MAX
+                    out[col] = max(numbers)
+            # columns without any numeric value are omitted from the bucket
+        result_rows.append(out)
+
+    kept_cols = [date_column]
+    for col in value_cols:
+        if any(col in r for r in result_rows):
+            kept_cols.append(col)
+    return kept_cols, result_rows
+
+
 @router.get("/visualizations/{viz_id}/data", response_model=VisualizationDataResponse)
-async def get_visualization_data(viz_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    """Execute the associated view's SQL and return full result set for charting."""
+async def get_visualization_data(
+    viz_id: uuid.UUID,
+    start: str | None = Query(None, description="时间筛选起始（ISO 日期），仅当可视化配置了时间列时生效"),
+    end: str | None = Query(None, description="时间筛选结束（ISO 日期），仅当可视化配置了时间列时生效"),
+    granularity: Granularity | None = Query(None, description="时间粒度重分桶：year/month/day"),
+    agg: AggFunction | None = Query(None, description="重分桶聚合函数：SUM/COUNT/AVG/MIN/MAX"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Execute the associated view's SQL and return full result set for charting.
+
+    Optional time-profile params (``start``/``end``/``granularity``/``agg``)
+    apply only when the visualization's ``config_json.date_column`` is set;
+    otherwise they are ignored.
+    """
     stmt = select(Visualization).where(Visualization.id == viz_id)
     result = await db.execute(stmt)
     viz = result.scalar_one_or_none()
@@ -182,6 +339,15 @@ async def get_visualization_data(viz_id: uuid.UUID, db: AsyncSession = Depends(g
         sql, params = _build_sql_from_config(config, apply_limit=True)
     except SQLBuildError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+
+    # Apply optional time-profile overrides (date filter / re-bucketing).
+    # Only active when the visualization declares a date_column profile.
+    date_column = viz.config_json.get("date_column")
+    time_active = bool(date_column) and bool(start or end or granularity or agg)
+    if time_active:
+        sql, params = await _apply_time_profile(
+            db, sql, params, date_column, start, end, granularity, agg
+        )
 
     # Execute full query (no pagination)
     try:
@@ -208,6 +374,11 @@ async def get_visualization_data(viz_id: uuid.UUID, db: AsyncSession = Depends(g
             else:
                 row_dict[key] = val
         rows.append(row_dict)
+
+    # Granularity re-bucketing runs as post-processing so mixed-type view
+    # output (text columns etc.) does not break SQL aggregation.
+    if time_active and granularity:
+        columns, rows = _rebucket_rows(rows, date_column, granularity, agg or "SUM")
 
     return VisualizationDataResponse(
         columns=columns,
