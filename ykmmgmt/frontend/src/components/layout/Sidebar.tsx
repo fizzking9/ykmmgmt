@@ -142,7 +142,12 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
 
       {/* Dynamic 仪表盘 section: parent links to the list page; each saved
           dashboard appears as a child nav item (by name). */}
-      <Collapsible open={dashboardsOpen} onOpenChange={() => toggleGroup("数据看板")}>
+      <Collapsible
+        open={dashboardsOpen}
+        // Toggle against the EFFECTIVE state — openGroups["数据看板"] may be
+        // undefined while the group is open via the active-page fallback
+        onOpenChange={() => setOpenGroups((prev) => ({ ...prev, ["数据看板"]: !dashboardsOpen }))}
+      >
         <div
           className={cn(
             "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted",
@@ -151,7 +156,12 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
         >
           <Link
             to="/dashboards"
-            onClick={onNavClick}
+            onClick={() => {
+              onNavClick?.();
+              // Toggle on label click like the other groups (the chevron
+              // still toggles without navigating)
+              setOpenGroups((prev) => ({ ...prev, ["数据看板"]: !dashboardsOpen }));
+            }}
             className="flex flex-1 items-center gap-2 text-left"
           >
             <LayoutDashboard className="h-4 w-4" />
