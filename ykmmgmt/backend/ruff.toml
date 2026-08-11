@@ -1,6 +1,8 @@
 # Ruff configuration for YKMMgmt backend
 target-version = "py312"
 line-length = 120
+# Alembic migrations are auto-generated boilerplate — excluded from lint
+extend-exclude = ["alembic"]
 
 [lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4"]

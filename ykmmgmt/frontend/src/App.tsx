@@ -11,6 +11,9 @@ import ViewsListPage from "@/pages/ViewsListPage";
 import VisualizationBuilderPage from "@/pages/VisualizationBuilderPage";
 import VisualizationsListPage from "@/pages/VisualizationsListPage";
 import VisualizationViewPage from "@/pages/VisualizationViewPage";
+import DashboardBuilderPage from "@/pages/DashboardBuilderPage";
+import DashboardDisplayPage from "@/pages/DashboardDisplayPage";
+import DashboardsListPage from "@/pages/DashboardsListPage";
 
 export default function App() {
   return (
@@ -28,6 +31,9 @@ export default function App() {
           <Route path="/visualizations/builder/:id?" element={<VisualizationBuilderPage />} />
           <Route path="/visualizations" element={<VisualizationsListPage />} />
           <Route path="/visualizations/:id" element={<VisualizationViewPage />} />
+          <Route path="/dashboards/builder/:id?" element={<DashboardBuilderPage />} />
+          <Route path="/dashboards" element={<DashboardsListPage />} />
+          <Route path="/dashboards/:id" element={<DashboardDisplayPage />} />
         </Route>
       </Routes>
     </>

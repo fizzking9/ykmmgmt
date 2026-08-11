@@ -14,11 +14,7 @@ export default function VisualizationViewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const {
-    data: viz,
-    isLoading: vizLoading,
-    isError: vizError,
-  } = useVisualization(id);
+  const { data: viz, isLoading: vizLoading, isError: vizError } = useVisualization(id);
   const {
     data,
     isLoading: dataLoading,

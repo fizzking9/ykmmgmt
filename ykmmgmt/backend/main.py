@@ -9,6 +9,7 @@ import app.services.table_specific.service_refund  # noqa: F401
 import app.services.table_specific.wallet_withdrawal  # noqa: F401
 from app.core.database import get_db
 from app.models import RefundOrder, ServiceRefundWorkOrder, WalletWithdrawal
+from app.routers.dashboards import router as dashboards_router
 from app.routers.imports import router as imports_router
 from app.routers.tables import router as tables_router
 from app.routers.views import router as views_router
@@ -27,6 +28,7 @@ app.include_router(imports_router)
 app.include_router(tables_router)
 app.include_router(views_router)
 app.include_router(visualizations_router)
+app.include_router(dashboards_router)
 
 # CORS — allow frontend dev server and localhost origins
 app.add_middleware(

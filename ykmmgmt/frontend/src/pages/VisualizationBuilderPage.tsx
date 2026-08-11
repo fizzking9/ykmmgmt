@@ -933,6 +933,110 @@ export default function VisualizationBuilderPage() {
             </Card>
           )}
 
+          {/* Time Profile — enables dashboard global time filtering.
+              KPI cards use their own 日期列 setting (same date_column key). */}
+          {state.viewId && columns.length > 0 && state.chartType !== "kpi_card" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">时间配置（可选）</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  设置时间列后，仪表盘的全局时间筛选（日期范围 / 粒度 / 聚合）才会作用于本可视化。
+                </p>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">时间列</label>
+                  <Select
+                    value={(state.configJson.date_column as string) || "__none__"}
+                    onValueChange={(v) =>
+                      vizBuilder.updateConfigKey("date_column", v === "__none__" ? "" : v)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {(state.configJson.date_column as string) || "未设置"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent
+                      align="start"
+                      sideOffset={4}
+                      alignItemWithTrigger={false}
+                      className="bg-background"
+                    >
+                      <SelectItem value="__none__">未设置</SelectItem>
+                      {dateColumns.map((col) => (
+                        <SelectItem key={col} value={col}>
+                          {col}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {(state.configJson.date_column as string) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">默认粒度</label>
+                      <Select
+                        value={(state.configJson.default_granularity as string) || "day"}
+                        onValueChange={(v) => vizBuilder.updateConfigKey("default_granularity", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue>
+                            {GRANULARITY_OPTIONS.find(
+                              (o) =>
+                                o.value ===
+                                ((state.configJson.default_granularity as string) || "day"),
+                            )?.label ?? "日"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent
+                          align="start"
+                          sideOffset={4}
+                          alignItemWithTrigger={false}
+                          className="bg-background"
+                        >
+                          {GRANULARITY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">默认聚合</label>
+                      <Select
+                        value={(state.configJson.default_agg as string) || "SUM"}
+                        onValueChange={(v) => vizBuilder.updateConfigKey("default_agg", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue>
+                            {AGGREGATION_OPTIONS.find(
+                              (o) =>
+                                o.value === ((state.configJson.default_agg as string) || "SUM"),
+                            )?.label ?? "求和"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent
+                          align="start"
+                          sideOffset={4}
+                          alignItemWithTrigger={false}
+                          className="bg-background"
+                        >
+                          {AGGREGATION_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Save */}
           <div className="flex gap-2 pb-4">
             <Button onClick={handleSave} disabled={isSaving}>
@@ -999,21 +1103,14 @@ export default function VisualizationBuilderPage() {
       {/* Name-conflict Confirmation Dialog */}
       {confirmDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setConfirmDialog(null)}
-          />
+          <div className="absolute inset-0 bg-black/50" onClick={() => setConfirmDialog(null)} />
           <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
             <h3 className="text-lg font-semibold">确认修改</h3>
             <p className="mt-2 text-sm text-muted-foreground">
               可视化名称「{confirmDialog.targetName}」已存在，是否修改该可视化？
             </p>
             <div className="mt-6 flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setConfirmDialog(null)}
-                disabled={isSaving}
-              >
+              <Button variant="outline" onClick={() => setConfirmDialog(null)} disabled={isSaving}>
                 取消
               </Button>
               <Button onClick={handleConfirmUpdate} disabled={isSaving}>
@@ -2883,9 +2980,7 @@ function PieLegendContent({
             />
             <span
               className="truncate"
-              style={
-                isHidden ? { color: "#94a3b8", textDecoration: "line-through" } : undefined
-              }
+              style={isHidden ? { color: "#94a3b8", textDecoration: "line-through" } : undefined}
             >
               {d.name}
               {pct != null ? ` ${pct}%` : ""}
@@ -2941,10 +3036,7 @@ export function PieChartPreview({
   // Hidden slices are excluded entirely so percentages recalculate over the
   // visible slices
   const visibleData = useMemo(() => pieData.filter((d) => !hidden[d.name]), [pieData, hidden]);
-  const visibleTotal = useMemo(
-    () => visibleData.reduce((s, d) => s + d.value, 0),
-    [visibleData],
-  );
+  const visibleTotal = useMemo(() => visibleData.reduce((s, d) => s + d.value, 0), [visibleData]);
 
   if (!labelColumn || !valueColumn) {
     return (

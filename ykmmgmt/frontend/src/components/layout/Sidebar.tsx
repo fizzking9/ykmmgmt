@@ -1,6 +1,7 @@
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { useDashboards } from "@/hooks/useDashboards";
 import {
   Upload,
   History,
@@ -9,6 +10,7 @@ import {
   BarChart3,
   Eye,
   LayoutGrid,
+  LayoutDashboard,
   PieChart,
 } from "lucide-react";
 import { useState } from "react";
@@ -48,6 +50,7 @@ const groups: NavGroup[] = [
 export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
   const location = useLocation();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const { data: dashboards } = useDashboards();
 
   const toggleGroup = (title: string) => {
     setOpenGroups((prev) => ({ ...prev, [title]: !prev[title] }));
@@ -69,6 +72,15 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
     }
     return location.pathname.startsWith(to);
   };
+
+  // Dashboards parent: active on the list page or a display page, but NOT on
+  // the builder (/dashboards/builder*) — explicit logic, no prefix matching.
+  const isDashboardsParentActive =
+    location.pathname === "/dashboards" ||
+    (location.pathname.startsWith("/dashboards/") &&
+      !location.pathname.startsWith("/dashboards/builder"));
+
+  const dashboardsOpen = openGroups["仪表盘"] ?? isDashboardsParentActive;
 
   return (
     <nav className="flex flex-col gap-2 p-4">
@@ -126,6 +138,70 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
           </Collapsible>
         );
       })}
+
+      {/* Dynamic 仪表盘 section: parent links to the list page; each saved
+          dashboard appears as a child nav item (by name). */}
+      <Collapsible open={dashboardsOpen} onOpenChange={() => toggleGroup("仪表盘")}>
+        <div
+          className={cn(
+            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted",
+            isDashboardsParentActive && "text-primary",
+          )}
+        >
+          <Link
+            to="/dashboards"
+            onClick={onNavClick}
+            className="flex flex-1 items-center gap-2 text-left"
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            <span className="flex-1">仪表盘</span>
+          </Link>
+          <CollapsibleTrigger className="shrink-0" title="展开/收起">
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 transition-transform duration-200",
+                dashboardsOpen && "rotate-180",
+              )}
+            />
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent className="space-y-1 pl-7 pt-1">
+          <NavLink
+            to="/dashboards"
+            onClick={onNavClick}
+            className={() =>
+              cn(
+                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
+                location.pathname === "/dashboards"
+                  ? "bg-muted font-medium text-primary"
+                  : "text-muted-foreground",
+              )
+            }
+          >
+            <LayoutGrid className="h-4 w-4" />
+            全部仪表盘
+          </NavLink>
+          {(dashboards ?? []).map((dash) => (
+            <NavLink
+              key={dash.id}
+              to={`/dashboards/${dash.id}`}
+              onClick={onNavClick}
+              className={() =>
+                cn(
+                  "flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
+                  location.pathname === `/dashboards/${dash.id}`
+                    ? "bg-muted font-medium text-primary"
+                    : "text-muted-foreground",
+                )
+              }
+              title={dash.name}
+            >
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              <span className="truncate">{dash.name}</span>
+            </NavLink>
+          ))}
+        </CollapsibleContent>
+      </Collapsible>
     </nav>
   );
 }

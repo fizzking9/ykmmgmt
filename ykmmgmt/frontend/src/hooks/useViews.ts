@@ -189,7 +189,7 @@ async function fetchViewData(id: string, page: number, size: number): Promise<Vi
   return res.json();
 }
 
-async function fetchViewFullData(id: string): Promise<ViewDataResponse> {
+export async function fetchViewFullData(id: string): Promise<ViewDataResponse> {
   const params = new URLSearchParams({ page: "1", size: "0" });
   const res = await fetch(`/api/views/${id}/data?${params}`);
   if (!res.ok) {

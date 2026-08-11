@@ -99,6 +99,32 @@ async function fetchVisualizationData(id: string): Promise<VisualizationDataResp
   return res.json();
 }
 
+/** Optional time-profile overrides for the dashboard global time filter. */
+export interface VizDataTimeParams {
+  start?: string;
+  end?: string;
+  granularity?: string;
+  agg?: string;
+}
+
+async function fetchVisualizationDataWithParams(
+  id: string,
+  params: VizDataTimeParams,
+): Promise<VisualizationDataResponse> {
+  const qs = new URLSearchParams();
+  if (params.start) qs.set("start", params.start);
+  if (params.end) qs.set("end", params.end);
+  if (params.granularity) qs.set("granularity", params.granularity);
+  if (params.agg) qs.set("agg", params.agg);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  const res = await fetch(`/api/visualizations/${id}/data${suffix}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "获取可视化数据失败" }));
+    throw new Error(typeof err.detail === "string" ? err.detail : "获取可视化数据失败");
+  }
+  return res.json();
+}
+
 // ── Hooks ───────────────────────────────────────────────────────────────────
 
 export function useVisualizations() {
@@ -180,6 +206,24 @@ export function useVisualizationData(id: string | undefined) {
     enabled: !!id,
     // Data is cached until explicitly invalidated by the manual 刷新 button —
     // revisiting a page (tab/route navigation) must NOT re-query.
+    staleTime: Infinity,
+  });
+}
+
+/** Dashboard tile data: visualization data with global time-filter params.
+ *
+ * The param tuple is part of the query key so changing the global filter
+ * re-fetches, while tab-switching keeps the cache (staleTime: Infinity).
+ */
+export function useVisualizationTileData(id: string | undefined, params: VizDataTimeParams) {
+  const start = params.start ?? "";
+  const end = params.end ?? "";
+  const granularity = params.granularity ?? "";
+  const agg = params.agg ?? "";
+  return useQuery({
+    queryKey: ["visualizationData", id, start, end, granularity, agg],
+    queryFn: () => fetchVisualizationDataWithParams(id!, { start, end, granularity, agg }),
+    enabled: !!id,
     staleTime: Infinity,
   });
 }

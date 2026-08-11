@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   Table,
   TableBody,
@@ -10,20 +9,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useViews } from "@/hooks/useViews";
 import {
-  useVisualizations,
-  useVisualizationData,
-  useDeleteVisualization,
-  type VisualizationListResponse,
-} from "@/hooks/useVisualizations";
-import { CHART_TYPES, type ChartType } from "@/contexts/VisualizationBuilderContext";
-import {
-  VisualizationRenderer,
-  isThumbnailChartType,
-} from "@/components/visualization/VisualizationRenderer";
+  useDashboards,
+  useUpdateDashboard,
+  useDeleteDashboard,
+  type DashboardListResponse,
+} from "@/hooks/useDashboards";
+import { useDashboardBuilderContext } from "@/contexts/DashboardBuilderContext";
 import {
   SortableTimeHeader,
   nextSortDir,
@@ -34,19 +27,16 @@ import {
   Eye,
   Pencil,
   Trash2,
-  BarChart3,
+  LayoutGrid,
   ChevronLeft,
   ChevronRight,
   Loader2,
   RefreshCw,
-  Table2,
-  CreditCard,
   Plus,
+  SpellCheck,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string): string {
   try {
@@ -63,96 +53,85 @@ function formatDate(iso: string): string {
   }
 }
 
-function chartTypeLabel(chartType: string): string {
-  return CHART_TYPES.find((ct) => ct.value === chartType)?.label ?? chartType;
-}
+// ── Rename Dialog ───────────────────────────────────────────────────────────
 
-// ── Thumbnail Cell ─────────────────────────────────────────────────────────
-// Chart types render a zoomed-out copy of the true visualization; data is
-// cached with staleTime: Infinity so pagination / tab navigation never
-// re-queries. Thumbnails are clickable and open the full-size view.
+function RenameDialog({ target, onClose }: { target: DashboardListResponse; onClose: () => void }) {
+  const updateDashboard = useUpdateDashboard();
+  const [name, setName] = useState(target.name);
 
-function ThumbnailCell({ viz }: { viz: VisualizationListResponse }) {
-  if (!isThumbnailChartType(viz.chart_type)) {
-    // No thumbnail for table / KPI card — show a type icon placeholder
-    return (
-      <div className="flex h-24 w-44 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
-        {viz.chart_type === "kpi_card" ? (
-          <CreditCard className="h-6 w-6" />
-        ) : (
-          <Table2 className="h-6 w-6" />
-        )}
-      </div>
+  const handleConfirm = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    updateDashboard.mutate(
+      { id: target.id, name: trimmed },
+      {
+        onSuccess: () => onClose(),
+      },
     );
-  }
-  return <ChartThumbnail viz={viz} />;
-}
-
-function ChartThumbnail({ viz }: { viz: VisualizationListResponse }) {
-  const navigate = useNavigate();
-  const { data, isLoading } = useVisualizationData(viz.id);
-
-  if (isLoading || !data) {
-    return <Skeleton className="h-24 w-44" />;
-  }
+  };
 
   return (
-    <div
-      onClick={() => navigate(`/visualizations/${viz.id}`)}
-      title="点击查看"
-      className="h-24 w-44 cursor-pointer overflow-hidden rounded-md border bg-background transition-colors hover:border-primary"
-    >
-      {/* Zoomed-out render of the true visualization: 704px wide chart scaled
-          ×0.25 → 176px (w-44), so the thumbnail mirrors the real chart */}
-      <div
-        className="pointer-events-none origin-top-left select-none"
-        style={{ width: 704, transform: "scale(0.25)" }}
-      >
-        <VisualizationRenderer
-          chartType={viz.chart_type as ChartType}
-          config={data.config_json}
-          columns={data.columns}
-          rows={data.rows}
-          height={320}
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
+        <h3 className="text-lg font-semibold">重命名仪表盘</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          为仪表盘「{target.name}」输入新名称（名称必须唯一）。
+        </p>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="输入新名称"
+          className="mt-3 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
         />
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={updateDashboard.isPending}>
+            取消
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={!name.trim() || name.trim() === target.name || updateDashboard.isPending}
+          >
+            {updateDashboard.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+            确定
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Delete Confirmation Dialog ─────────────────────────────────────────────
+// ── Delete Confirmation Dialog ──────────────────────────────────────────────
 
 function DeleteConfirmDialog({
-  open,
-  vizName,
-  onConfirm,
-  onCancel,
-  isPending,
+  target,
+  onClose,
 }: {
-  open: boolean;
-  vizName: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  isPending: boolean;
+  target: DashboardListResponse;
+  onClose: () => void;
 }) {
-  if (!open) return null;
-
+  const deleteDashboard = useDeleteDashboard();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      {/* Dialog */}
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
         <h3 className="text-lg font-semibold">确认删除</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          确定要删除可视化「{vizName}」吗？此操作不可撤销。
+          确定要删除仪表盘「{target.name}」吗？此操作不可撤销。
         </p>
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isPending}>
+          <Button variant="outline" onClick={onClose} disabled={deleteDashboard.isPending}>
             取消
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
-            {isPending ? (
+          <Button
+            variant="destructive"
+            disabled={deleteDashboard.isPending}
+            onClick={() => {
+              deleteDashboard.mutate(target.id, { onSuccess: () => onClose() });
+            }}
+          >
+            {deleteDashboard.isPending ? (
               <Loader2 className="mr-1 h-4 w-4 animate-spin" />
             ) : (
               <Trash2 className="mr-1 h-4 w-4" />
@@ -165,33 +144,26 @@ function DeleteConfirmDialog({
   );
 }
 
-// ── Main Page ──────────────────────────────────────────────────────────────
+// ── Main Page ───────────────────────────────────────────────────────────────
 
-export default function VisualizationsListPage() {
+export default function DashboardsListPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const builder = useDashboardBuilderContext();
 
-  const {
-    data: visualizations,
-    isLoading,
-    isError,
-    error,
-    refetch,
-    isRefetching,
-  } = useVisualizations();
-  const { data: views } = useViews();
-  const deleteVisualization = useDeleteVisualization();
+  const { data: dashboards, isLoading, isError, error, refetch, isRefetching } = useDashboards();
+
+  // Fresh builder state for a new dashboard — otherwise a stale draft
+  // (name/tiles/editingId) from a previous session would leak in.
+  const handleCreate = () => {
+    builder.resetState();
+    navigate("/dashboards/builder");
+  };
 
   const [page, setPage] = useState(1);
   const [sortCol, setSortCol] = useState<TimeSortCol>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>(null);
-  const [deleteTarget, setDeleteTarget] = useState<VisualizationListResponse | null>(null);
-
-  const viewNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of views ?? []) map.set(v.id, v.name);
-    return map;
-  }, [views]);
+  const [renameTarget, setRenameTarget] = useState<DashboardListResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DashboardListResponse | null>(null);
 
   const handleSort = (col: TimeSortCol) => {
     if (sortCol === col) {
@@ -205,12 +177,12 @@ export default function VisualizationsListPage() {
 
   // Default (sortDir null): backend order — created_at descending
   const sortedRows = useMemo(() => {
-    const list = [...(visualizations ?? [])];
+    const list = [...(dashboards ?? [])];
     if (!sortDir) return list;
     list.sort((a, b) => new Date(a[sortCol]).getTime() - new Date(b[sortCol]).getTime());
     if (sortDir === "desc") list.reverse();
     return list;
-  }, [visualizations, sortCol, sortDir]);
+  }, [dashboards, sortCol, sortDir]);
 
   const totalPages = sortedRows.length ? Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE)) : 1;
   const pagedRows = useMemo(
@@ -218,27 +190,17 @@ export default function VisualizationsListPage() {
     [sortedRows, page],
   );
 
-  // Manual refresh: re-fetch the list AND invalidate the cached thumbnail
-  // data so charts re-render with possibly new data. This is the ONLY path
-  // that re-fetches visualization data (no auto-refresh / polling).
-  const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["visualizationData"] });
-    refetch();
-  };
-
-  const refreshing = isRefetching;
-
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">可视化</h2>
+        <h2 className="text-2xl font-bold tracking-tight">仪表盘</h2>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/visualizations/builder")}>
+          <Button variant="outline" size="sm" onClick={handleCreate}>
             <Plus className="mr-2 h-4 w-4" />
-            新建
+            新建仪表盘
           </Button>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? (
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
+            {isRefetching ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -266,29 +228,25 @@ export default function VisualizationsListPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>缩略图</TableHead>
                 <TableHead>名称</TableHead>
-                <TableHead>图表类型</TableHead>
-                <TableHead>来源视图</TableHead>
+                <TableHead>描述</TableHead>
+                <TableHead>瓦片数</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>更新时间</TableHead>
-                <TableHead className="w-[200px]">操作</TableHead>
+                <TableHead className="w-[260px]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {Array.from({ length: 5 }).map((_, i) => (
+              {Array.from({ length: 4 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell>
-                    <Skeleton className="h-24 w-44" />
-                  </TableCell>
-                  <TableCell>
                     <Skeleton className="h-5 w-32" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-5 w-16" />
+                    <Skeleton className="h-5 w-48" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-5 w-8" />
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-5 w-40" />
@@ -298,6 +256,7 @@ export default function VisualizationsListPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
+                      <Skeleton className="h-8 w-16" />
                       <Skeleton className="h-8 w-16" />
                       <Skeleton className="h-8 w-16" />
                       <Skeleton className="h-8 w-16" />
@@ -311,31 +270,26 @@ export default function VisualizationsListPage() {
       )}
 
       {/* Empty state */}
-      {!isLoading && !isError && visualizations && visualizations.length === 0 && (
+      {!isLoading && !isError && dashboards && dashboards.length === 0 && (
         <div className="rounded-md bg-muted/30 p-16 text-center">
-          <BarChart3 className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-lg text-muted-foreground">暂无保存的可视化，请先创建可视化</p>
-          <Button
-            className="mt-4"
-            variant="outline"
-            onClick={() => navigate("/visualizations/builder")}
-          >
-            创建可视化
+          <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+          <p className="text-lg text-muted-foreground">暂无仪表盘，请先创建仪表盘</p>
+          <Button className="mt-4" variant="outline" onClick={handleCreate}>
+            创建仪表盘
           </Button>
         </div>
       )}
 
       {/* Table */}
-      {!isError && visualizations && visualizations.length > 0 && (
+      {!isError && dashboards && dashboards.length > 0 && (
         <>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>缩略图</TableHead>
                   <TableHead>名称</TableHead>
-                  <TableHead>图表类型</TableHead>
-                  <TableHead>来源视图</TableHead>
+                  <TableHead>描述</TableHead>
+                  <TableHead>瓦片数</TableHead>
                   <TableHead>
                     <SortableTimeHeader
                       label="创建时间"
@@ -354,58 +308,55 @@ export default function VisualizationsListPage() {
                       onSort={handleSort}
                     />
                   </TableHead>
-                  <TableHead className="w-[200px]">操作</TableHead>
+                  <TableHead className="w-[260px]">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pagedRows.map((viz) => (
-                  <TableRow key={viz.id}>
-                    <TableCell>
-                      <ThumbnailCell viz={viz} />
+                {pagedRows.map((dash) => (
+                  <TableRow key={dash.id}>
+                    <TableCell className="max-w-[200px] truncate font-medium" title={dash.name}>
+                      {dash.name}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate font-medium" title={viz.name}>
-                      {viz.name}
+                    <TableCell
+                      className="max-w-[260px] truncate text-muted-foreground"
+                      title={dash.description ?? ""}
+                    >
+                      {dash.description || "—"}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{chartTypeLabel(viz.chart_type)}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                      {viewNameById.get(viz.view_id) ?? "—"}
+                    <TableCell>{dash.tile_count}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {formatDate(dash.created_at)}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {formatDate(viz.created_at)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatDate(viz.updated_at)}
+                      {formatDate(dash.updated_at)}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        {/* 查看 */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/visualizations/${viz.id}`)}
+                          onClick={() => navigate(`/dashboards/${dash.id}`)}
                         >
                           <Eye className="mr-1 h-4 w-4" />
                           查看
                         </Button>
-
-                        {/* 编辑 */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/visualizations/builder/${viz.id}`)}
+                          onClick={() => navigate(`/dashboards/builder/${dash.id}`)}
                         >
                           <Pencil className="mr-1 h-4 w-4" />
                           编辑
                         </Button>
-
-                        {/* 删除 */}
+                        <Button variant="ghost" size="sm" onClick={() => setRenameTarget(dash)}>
+                          <SpellCheck className="mr-1 h-4 w-4" />
+                          重命名
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(viz)}
+                          onClick={() => setDeleteTarget(dash)}
                         >
                           <Trash2 className="mr-1 h-4 w-4" />
                           删除
@@ -418,11 +369,11 @@ export default function VisualizationsListPage() {
             </Table>
           </div>
 
-          {/* Pagination (client-side; never triggers data fetches) */}
-          {visualizations.length > PAGE_SIZE && (
+          {/* Pagination */}
+          {dashboards.length > PAGE_SIZE && (
             <div className="mt-4 flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                共 {visualizations.length} 条记录，第{" "}
+                共 {dashboards.length} 条记录，第{" "}
                 <input
                   type="number"
                   min={1}
@@ -463,20 +414,11 @@ export default function VisualizationsListPage() {
         </>
       )}
 
-      {/* Delete Confirmation Dialog */}
-      <DeleteConfirmDialog
-        open={!!deleteTarget}
-        vizName={deleteTarget?.name ?? ""}
-        onConfirm={() => {
-          if (deleteTarget) {
-            deleteVisualization.mutate(deleteTarget.id, {
-              onSuccess: () => setDeleteTarget(null),
-            });
-          }
-        }}
-        onCancel={() => setDeleteTarget(null)}
-        isPending={deleteVisualization.isPending}
-      />
+      {/* Dialogs */}
+      {renameTarget && <RenameDialog target={renameTarget} onClose={() => setRenameTarget(null)} />}
+      {deleteTarget && (
+        <DeleteConfirmDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} />
+      )}
     </div>
   );
 }

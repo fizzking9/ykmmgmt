@@ -6,6 +6,7 @@ import { UploadProvider } from "@/contexts/UploadContext";
 import { DataBrowserProvider } from "@/contexts/DataBrowserContext";
 import { ViewBuilderProvider } from "@/contexts/ViewBuilderContext";
 import { VisualizationBuilderProvider } from "@/contexts/VisualizationBuilderContext";
+import { DashboardBuilderProvider } from "@/contexts/DashboardBuilderContext";
 import App from "./App";
 import "./index.css";
 
@@ -26,7 +27,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <DataBrowserProvider>
             <ViewBuilderProvider>
               <VisualizationBuilderProvider>
-                <App />
+                <DashboardBuilderProvider>
+                  <App />
+                </DashboardBuilderProvider>
               </VisualizationBuilderProvider>
             </ViewBuilderProvider>
           </DataBrowserProvider>
