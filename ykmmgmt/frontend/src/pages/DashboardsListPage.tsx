@@ -74,9 +74,9 @@ function RenameDialog({ target, onClose }: { target: DashboardListResponse; onCl
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-        <h3 className="text-lg font-semibold">重命名仪表盘</h3>
+        <h3 className="text-lg font-semibold">重命名看板</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          为仪表盘「{target.name}」输入新名称（名称必须唯一）。
+          为看板「{target.name}」输入新名称（名称必须唯一）。
         </p>
         <input
           type="text"
@@ -118,7 +118,7 @@ function DeleteConfirmDialog({
       <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
         <h3 className="text-lg font-semibold">确认删除</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          确定要删除仪表盘「{target.name}」吗？此操作不可撤销。
+          确定要删除看板「{target.name}」吗？此操作不可撤销。
         </p>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose} disabled={deleteDashboard.isPending}>
@@ -193,11 +193,11 @@ export default function DashboardsListPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">仪表盘</h2>
+        <h2 className="text-2xl font-bold tracking-tight">数据看板</h2>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleCreate}>
             <Plus className="mr-2 h-4 w-4" />
-            新建仪表盘
+            新建看板
           </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
             {isRefetching ? (
@@ -230,7 +230,6 @@ export default function DashboardsListPage() {
               <TableRow>
                 <TableHead>名称</TableHead>
                 <TableHead>描述</TableHead>
-                <TableHead>瓦片数</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>更新时间</TableHead>
                 <TableHead className="w-[260px]">操作</TableHead>
@@ -244,9 +243,6 @@ export default function DashboardsListPage() {
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-5 w-48" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-8" />
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-5 w-40" />
@@ -273,9 +269,9 @@ export default function DashboardsListPage() {
       {!isLoading && !isError && dashboards && dashboards.length === 0 && (
         <div className="rounded-md bg-muted/30 p-16 text-center">
           <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-lg text-muted-foreground">暂无仪表盘，请先创建仪表盘</p>
+          <p className="text-lg text-muted-foreground">暂无看板，请先创建看板</p>
           <Button className="mt-4" variant="outline" onClick={handleCreate}>
-            创建仪表盘
+            创建看板
           </Button>
         </div>
       )}
@@ -289,7 +285,6 @@ export default function DashboardsListPage() {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>描述</TableHead>
-                  <TableHead>瓦片数</TableHead>
                   <TableHead>
                     <SortableTimeHeader
                       label="创建时间"
@@ -323,7 +318,6 @@ export default function DashboardsListPage() {
                     >
                       {dash.description || "—"}
                     </TableCell>
-                    <TableCell>{dash.tile_count}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {formatDate(dash.created_at)}
                     </TableCell>

@@ -81,7 +81,14 @@ export function VisualizationRenderer({
       case "table":
         return <TablePreview config={config} columns={columns} rows={rows} />;
       case "kpi_card":
-        return <KpiCardPreview config={config} rows={rows} numberFormat={numberFormat} />;
+        return (
+          <KpiCardPreview
+            config={config}
+            rows={rows}
+            numberFormat={numberFormat}
+            height={chartHeight}
+          />
+        );
       case "bar":
         return (
           <BarChartPreview

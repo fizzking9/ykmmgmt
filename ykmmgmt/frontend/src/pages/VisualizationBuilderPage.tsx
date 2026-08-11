@@ -14,6 +14,7 @@ import {
   COLOR_THEMES,
   type ChartType,
 } from "@/contexts/VisualizationBuilderContext";
+import { useDashboardBuilderContext } from "@/contexts/DashboardBuilderContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,6 +52,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
@@ -427,6 +429,19 @@ export default function VisualizationBuilderPage() {
   const vizBuilder = useVisualizationBuilderContext();
   const { state } = vizBuilder;
 
+  // When the user jumps here from a dashboard tile's "配置可视化" button,
+  // the dashboard draft lives in DashboardBuilderContext (above the router)
+  // — offer a way back without losing it.
+  const dashboardBuilder = useDashboardBuilderContext();
+  const hasDashboardDraft =
+    dashboardBuilder.state.tiles.length > 0 ||
+    !!dashboardBuilder.state.editingId ||
+    dashboardBuilder.state.name.trim() !== "";
+  const backToDashboardBuilder = () => {
+    const draftId = dashboardBuilder.state.editingId;
+    navigate(draftId ? `/dashboards/builder/${draftId}` : "/dashboards/builder");
+  };
+
   // Fetch full view data for visualization preview (all rows, not paginated)
   const {
     data: viewData,
@@ -649,7 +664,14 @@ export default function VisualizationBuilderPage() {
           <TablePreview config={config} columns={columns} rows={rows} inModal={opts.forModal} />
         );
       case "kpi_card":
-        return <KpiCardPreview config={config} rows={rows} numberFormat={state.numberFormat} />;
+        return (
+          <KpiCardPreview
+            config={config}
+            rows={rows}
+            numberFormat={state.numberFormat}
+            height={chartHeight}
+          />
+        );
       case "bar":
         return (
           <BarChartPreview
@@ -719,7 +741,15 @@ export default function VisualizationBuilderPage() {
     <div>
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">可视化构建器</h2>
+        <div className="flex items-center gap-3">
+          {hasDashboardDraft && (
+            <Button variant="ghost" size="sm" onClick={backToDashboardBuilder}>
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              返回看板构建器
+            </Button>
+          )}
+          <h2 className="text-2xl font-bold tracking-tight">可视化构建器</h2>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExportPng} disabled={!state.viewId}>
             <Download className="mr-1 h-4 w-4" />
@@ -982,7 +1012,7 @@ export default function VisualizationBuilderPage() {
                       >
                         <SelectTrigger>
                           <SelectValue>
-                            {GRANULARITY_OPTIONS.find(
+                            {TIME_PROFILE_GRANULARITY_OPTIONS.find(
                               (o) =>
                                 o.value ===
                                 ((state.configJson.default_granularity as string) || "day"),
@@ -995,7 +1025,7 @@ export default function VisualizationBuilderPage() {
                           alignItemWithTrigger={false}
                           className="bg-background"
                         >
-                          {GRANULARITY_OPTIONS.map((opt) => (
+                          {TIME_PROFILE_GRANULARITY_OPTIONS.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value}>
                               {opt.label}
                             </SelectItem>
@@ -1309,6 +1339,16 @@ const AGGREGATION_OPTIONS = [
 const GRANULARITY_OPTIONS = [
   { value: "day", label: "日" },
   { value: "month", label: "月" },
+  { value: "year", label: "年" },
+];
+
+// Default granularity for the dashboard time profile — supports the full
+// set the dashboard granularity tabs offer (week/quarter included).
+const TIME_PROFILE_GRANULARITY_OPTIONS = [
+  { value: "day", label: "日" },
+  { value: "week", label: "周" },
+  { value: "month", label: "月" },
+  { value: "quarter", label: "季" },
   { value: "year", label: "年" },
 ];
 
@@ -2409,10 +2449,13 @@ export function KpiCardPreview({
   config,
   rows,
   numberFormat,
+  height,
 }: {
   config: Record<string, unknown>;
   rows: Record<string, unknown>[];
   numberFormat: { decimals: number; thousandsSeparator: boolean; currencyPrefix: string };
+  /** Fixed height (px) for contexts without a height-constrained parent (e.g. thumbnails). */
+  height?: number;
 }) {
   const valueColumn = config.value_column as string;
   const label = (config.label as string) || "指标";
@@ -2589,29 +2632,38 @@ export function KpiCardPreview({
   const granularityLabel = granularity === "day" ? "日" : granularity === "month" ? "月" : "年";
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border bg-card p-8">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-2 text-4xl font-bold tracking-tight">{formattedValue}</p>
+    <div
+      // Fill the tile completely; inline-size containment lets the value
+      // scale with the tile width (cqw) instead of leaving blank area.
+      className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg bg-card p-3 text-center [container-type:inline-size]"
+      style={height ? { height } : { minHeight: 200 }}
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-bold leading-tight tracking-tight text-[clamp(1.5rem,11cqw,3.5rem)]">
+        {formattedValue}
+      </p>
       {currentPeriodLabel && (
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground">
           {currentPeriodLabel}（按{granularityLabel}）
         </p>
       )}
-      <div className="mt-3 space-y-1">
-        {prevChange !== null && (
-          <p className={`text-sm ${prevChange >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {prevChange >= 0 ? "+" : ""}
-            {prevChange.toFixed(1)}% 环比
-          </p>
-        )}
-        {yearAgoChange !== null && (
-          <p className={`text-sm ${yearAgoChange >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {yearAgoChange >= 0 ? "+" : ""}
-            {yearAgoChange.toFixed(1)}% 同比
-          </p>
-        )}
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">共 {rows.length} 条记录</p>
+      {(prevChange !== null || yearAgoChange !== null) && (
+        <div className="flex flex-wrap items-center justify-center gap-x-3">
+          {prevChange !== null && (
+            <p className={`text-xs ${prevChange >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {prevChange >= 0 ? "+" : ""}
+              {prevChange.toFixed(1)}% 环比
+            </p>
+          )}
+          {yearAgoChange !== null && (
+            <p className={`text-xs ${yearAgoChange >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {yearAgoChange >= 0 ? "+" : ""}
+              {yearAgoChange.toFixed(1)}% 同比
+            </p>
+          )}
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground/80">共 {rows.length} 条记录</p>
     </div>
   );
 }

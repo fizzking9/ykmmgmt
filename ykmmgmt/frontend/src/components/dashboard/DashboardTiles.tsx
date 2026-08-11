@@ -50,12 +50,15 @@ export function KpiTileBody({ config }: { config: KpiTileConfig }) {
   const value = computeAggregation(data.rows, config.value_column, config.agg);
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-1 p-3 text-center">
-      <p className="text-sm text-muted-foreground">{config.label}</p>
-      <p className="text-3xl font-bold tracking-tight">
+    <div
+      // Fill the tile; inline-size containment scales the value with tile width
+      className="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center [container-type:inline-size]"
+    >
+      <p className="text-xs text-muted-foreground">{config.label}</p>
+      <p className="font-bold leading-tight tracking-tight text-[clamp(1.5rem,13cqw,3.25rem)]">
         {value === null ? "—" : formatKpiValue(value)}
       </p>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[11px] text-muted-foreground">
         {AGG_LABELS[config.agg]} · {config.value_column}
       </p>
     </div>

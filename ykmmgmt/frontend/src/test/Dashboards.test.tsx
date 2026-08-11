@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import DashboardsListPage from "@/pages/DashboardsListPage";
 import { computeAggregation } from "@/hooks/useDashboards";
+import { computePresetRange } from "@/lib/datePresets";
 import { TextTileMarkdown } from "@/components/dashboard/TextTileMarkdown";
 import {
   DashboardBuilderProvider,
@@ -91,18 +92,17 @@ function renderPage() {
 describe("DashboardsListPage", () => {
   it("renders the page title and create button", () => {
     renderPage();
-    expect(screen.getByText("仪表盘")).toBeInTheDocument();
-    expect(screen.getByText("新建仪表盘")).toBeInTheDocument();
+    expect(screen.getByText("数据看板")).toBeInTheDocument();
+    expect(screen.getByText("新建看板")).toBeInTheDocument();
   });
 
-  it("renders rows with tile count and four actions", () => {
+  it("renders rows without a tile-count column and four actions", () => {
     renderPage();
     expect(screen.getByText("运营总览")).toBeInTheDocument();
     expect(screen.getByText("退款监控")).toBeInTheDocument();
     expect(screen.getByText("核心指标")).toBeInTheDocument();
-    // Tile counts
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    // Tile count column was removed from the overview table
+    expect(screen.queryByText("瓦片数")).not.toBeInTheDocument();
     // Sortable time columns
     expect(screen.getByText("创建时间")).toBeInTheDocument();
     expect(screen.getByText("更新时间")).toBeInTheDocument();
@@ -115,7 +115,7 @@ describe("DashboardsListPage", () => {
 
   it("navigates to view / edit / create entry points", () => {
     renderPage();
-    fireEvent.click(screen.getByText("新建仪表盘"));
+    fireEvent.click(screen.getByText("新建看板"));
     expect(screen.getByText("新建探针")).toBeInTheDocument();
   });
 
@@ -131,7 +131,7 @@ describe("DashboardsListPage", () => {
   it("rename dialog updates the dashboard name", () => {
     renderPage();
     fireEvent.click(screen.getAllByText("重命名")[0]);
-    expect(screen.getByText("重命名仪表盘")).toBeInTheDocument();
+    expect(screen.getByText("重命名看板")).toBeInTheDocument();
 
     const input = screen.getByPlaceholderText("输入新名称");
     fireEvent.change(input, { target: { value: "运营总览 V2" } });
@@ -146,7 +146,7 @@ describe("DashboardsListPage", () => {
     renderPage();
     const deleteButtons = screen.getAllByText("删除");
     fireEvent.click(deleteButtons[0]);
-    expect(screen.getByText(/确定要删除仪表盘「运营总览」吗？/)).toBeInTheDocument();
+    expect(screen.getByText(/确定要删除看板「运营总览」吗？/)).toBeInTheDocument();
 
     // Cancel closes the dialog without deleting
     fireEvent.click(screen.getByText("取消"));
@@ -187,6 +187,42 @@ describe("computeAggregation", () => {
 
   it("returns null when no numeric values exist", () => {
     expect(computeAggregation([{ s: "abc" }], "s", "SUM")).toBeNull();
+  });
+});
+
+// ── Date preset range tests ──────────────────────────────────────────────
+
+describe("computePresetRange", () => {
+  // Fixed reference date: 2026-08-11
+  const today = new Date(2026, 7, 11);
+
+  it("computes inclusive rolling windows ending today", () => {
+    expect(computePresetRange("last7", today)).toEqual({
+      start: "2026-08-05",
+      end: "2026-08-11",
+    });
+    expect(computePresetRange("last30", today)).toEqual({
+      start: "2026-07-13",
+      end: "2026-08-11",
+    });
+  });
+
+  it("computes calendar-based ranges", () => {
+    expect(computePresetRange("thisMonth", today)).toEqual({
+      start: "2026-08-01",
+      end: "2026-08-11",
+    });
+    expect(computePresetRange("thisYear", today)).toEqual({
+      start: "2026-01-01",
+      end: "2026-08-11",
+    });
+  });
+
+  it("rolls the year back for last3months across January", () => {
+    expect(computePresetRange("last3months", new Date(2026, 2, 10))).toEqual({
+      start: "2025-12-10",
+      end: "2026-03-10",
+    });
   });
 });
 

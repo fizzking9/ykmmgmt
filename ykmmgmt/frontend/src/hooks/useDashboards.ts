@@ -174,6 +174,8 @@ export function useKpiTileData(viewId: string | undefined) {
     queryFn: () => fetchViewFullData(viewId!),
     enabled: !!viewId,
     staleTime: Infinity,
+    // No background retries — surface errors in the tile immediately
+    retry: false,
   });
 }
 

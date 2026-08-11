@@ -5,7 +5,6 @@ import "react-grid-layout/css/styles.css";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -22,12 +21,17 @@ import {
   type DashboardTile,
   type KpiTileConfig,
 } from "@/hooks/useDashboards";
-import { useVisualizations } from "@/hooks/useVisualizations";
+import { useVisualizations, useVisualizationTileData } from "@/hooks/useVisualizations";
 import { useViews, useViewFullData } from "@/hooks/useViews";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { CHART_TYPES } from "@/contexts/VisualizationBuilderContext";
 import { TextTileMarkdown } from "@/components/dashboard/TextTileMarkdown";
-import { AGG_LABELS } from "@/components/dashboard/DashboardTiles";
+import {
+  AGG_LABELS,
+  KpiTileBody,
+  TileLoadingBody,
+  VisualizationTileBody,
+} from "@/components/dashboard/DashboardTiles";
 import {
   Plus,
   Save,
@@ -35,10 +39,15 @@ import {
   Trash2,
   GripVertical,
   Pencil,
-  BarChart3,
   Type,
   Gauge,
+  Eye,
   RotateCcw,
+  Settings2,
+  Maximize2,
+  Minimize2,
+  ArrowLeft,
+  X,
   MonitorSmartphone,
 } from "lucide-react";
 
@@ -242,6 +251,79 @@ function KpiTilePanel({
   );
 }
 
+// ── Live visualization preview inside a builder tile ─────────────────
+
+function BuilderVizPreview({
+  visualizationId,
+  height,
+}: {
+  visualizationId?: string;
+  height: number;
+}) {
+  const { data, isLoading } = useVisualizationTileData(visualizationId, {});
+  if (!visualizationId) {
+    return <p className="p-3 text-center text-sm text-red-600">未选择可视化</p>;
+  }
+  if (isLoading || !data) return <TileLoadingBody />;
+  return <VisualizationTileBody data={data} height={height} />;
+}
+
+// ── Builder tile chrome: hover drag pill + action toolbar ────────────
+// No permanent header — keeps the canvas WYSIWYG. Hover reveals the
+// drag handle (top center) and configure/preview/remove toolbar (top right).
+
+function BuilderTileChrome({
+  children,
+  onConfigure,
+  onPreview,
+  onRemove,
+}: {
+  children: React.ReactNode;
+  onConfigure?: () => void;
+  onPreview: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border bg-background shadow-sm">
+      <div className="min-h-0 flex-1 overflow-hidden p-1">{children}</div>
+      <div
+        className="tile-drag-handle absolute left-1/2 top-1.5 z-10 hidden -translate-x-1/2 cursor-move rounded-md border bg-background/95 p-1 shadow-sm group-hover:block"
+        title="拖动调整位置"
+      >
+        <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+      </div>
+      <div className="absolute right-1.5 top-1.5 z-10 hidden items-center gap-0.5 rounded-md border bg-background/95 p-0.5 shadow-sm group-hover:flex">
+        {onConfigure && (
+          <button
+            type="button"
+            title="配置可视化"
+            className="rounded p-1 text-muted-foreground hover:bg-muted"
+            onClick={onConfigure}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          title="预览"
+          className="rounded p-1 text-muted-foreground hover:bg-muted"
+          onClick={onPreview}
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          title="删除瓦片"
+          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+          onClick={onRemove}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────
 
 export default function DashboardBuilderPage() {
@@ -262,6 +344,16 @@ export default function DashboardBuilderPage() {
 
   // Grid container measurement (react-grid-layout v2 replaces WidthProvider)
   const { width: gridWidth, mounted: gridMounted, containerRef: gridRef } = useContainerWidth();
+  // Second measurement for the expanded (full-screen WYSIWYG) canvas
+  const {
+    width: expandWidth,
+    mounted: expandMounted,
+    containerRef: expandRef,
+  } = useContainerWidth();
+
+  // Canvas expansion + tile preview
+  const [canvasExpanded, setCanvasExpanded] = useState(false);
+  const [previewTile, setPreviewTile] = useState<DashboardTile | null>(null);
 
   // KPI panel state
   const [kpiPanelOpen, setKpiPanelOpen] = useState(false);
@@ -285,13 +377,6 @@ export default function DashboardBuilderPage() {
     for (const v of visualizations ?? []) map.set(v.id, { name: v.name, chartType: v.chart_type });
     return map;
   }, [visualizations]);
-
-  const views = useViews();
-  const viewNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of views.data ?? []) map.set(v.id, v.name);
-    return map;
-  }, [views.data]);
 
   // ── Grid wiring ────────────────────────────────────────────────────────
 
@@ -357,7 +442,7 @@ export default function DashboardBuilderPage() {
   const handleSave = useCallback(async () => {
     const trimmedName = state.name.trim();
     if (!trimmedName) {
-      toast.error("请输入仪表盘名称");
+      toast.error("请输入看板名称");
       return;
     }
 
@@ -375,7 +460,7 @@ export default function DashboardBuilderPage() {
   const handleRenameRetry = useCallback(async () => {
     const newName = renameValue.trim();
     if (!newName) {
-      toast.error("请输入新的仪表盘名称");
+      toast.error("请输入新的看板名称");
       return;
     }
     setRenameOpen(false);
@@ -410,24 +495,16 @@ export default function DashboardBuilderPage() {
 
   // ── Tile rendering inside the grid ─────────────────────────────────────
 
-  const renderTileBody = (tile: DashboardTile) => {
+  const renderTileBody = (tile: DashboardTile, height: number) => {
     switch (tile.tile_type) {
       case "visualization": {
-        const viz = tile.visualization_id ? vizNameById.get(tile.visualization_id) : undefined;
+        const exists = tile.visualization_id ? vizNameById.has(tile.visualization_id) : false;
+        if (!exists) {
+          return <p className="p-3 text-center text-sm text-red-600">可视化不存在或已被删除</p>;
+        }
+        // WYSIWYG: render the actual chart inside the canvas
         return (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center">
-            <BarChart3 className="h-6 w-6 text-muted-foreground" />
-            {viz ? (
-              <>
-                <p className="text-sm font-medium">{viz.name}</p>
-                <Badge variant="secondary">
-                  {CHART_TYPES.find((ct) => ct.value === viz.chartType)?.label ?? viz.chartType}
-                </Badge>
-              </>
-            ) : (
-              <p className="text-sm text-red-600">可视化不存在或已被删除</p>
-            )}
-          </div>
+          <BuilderVizPreview visualizationId={tile.visualization_id ?? undefined} height={height} />
         );
       }
       case "text":
@@ -440,19 +517,20 @@ export default function DashboardBuilderPage() {
       case "kpi_card": {
         const cfg = tile.config;
         return (
-          <div className="flex h-full flex-col items-center justify-center gap-1 p-3 text-center">
-            <Gauge className="h-5 w-5 text-muted-foreground" />
-            <p className="text-sm font-medium">{cfg?.label || "KPI 卡"}</p>
-            {cfg && (
-              <p className="text-xs text-muted-foreground">
-                {viewNameById.get(cfg.view_id) ?? "未知视图"} · {AGG_LABELS[cfg.agg]}
-                {cfg.value_column ? ` · ${cfg.value_column}` : ""}
-              </p>
-            )}
-            <Button variant="ghost" size="sm" onClick={() => openKpiPanel(tile)}>
-              <Pencil className="mr-1 h-3 w-3" />
-              编辑
-            </Button>
+          <div className="flex h-full flex-col">
+            <div className="min-h-0 flex-1">
+              {cfg ? (
+                <KpiTileBody config={cfg} />
+              ) : (
+                <p className="p-3 text-center text-sm text-red-600">未配置 KPI 卡</p>
+              )}
+            </div>
+            <div className="flex justify-center pb-1">
+              <Button variant="ghost" size="sm" onClick={() => openKpiPanel(tile)}>
+                <Pencil className="mr-1 h-3 w-3" />
+                编辑
+              </Button>
+            </div>
           </div>
         );
       }
@@ -468,7 +546,7 @@ export default function DashboardBuilderPage() {
     return (
       <div className="rounded-md bg-muted/30 p-16 text-center">
         <MonitorSmartphone className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-        <p className="text-lg text-muted-foreground">仪表盘编辑需要桌面端视口（宽度 ≥ 1024px）</p>
+        <p className="text-lg text-muted-foreground">看板编辑需要桌面端视口（宽度 ≥ 1024px）</p>
         <p className="mt-2 text-sm text-muted-foreground">
           请在桌面浏览器中打开以拖拽和调整瓦片布局；移动端仅支持只读查看。
         </p>
@@ -480,7 +558,19 @@ export default function DashboardBuilderPage() {
     <div>
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">仪表盘构建器</h2>
+        <div className="flex items-center gap-3">
+          {state.editingId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(`/dashboards/${state.editingId}`)}
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              返回看板
+            </Button>
+          )}
+          <h2 className="text-2xl font-bold tracking-tight">看板构建器</h2>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleReset}>
             <RotateCcw className="mr-1 h-4 w-4" />
@@ -513,7 +603,7 @@ export default function DashboardBuilderPage() {
                   type="text"
                   value={state.name}
                   onChange={(e) => builder.setName(e.target.value)}
-                  placeholder="输入仪表盘名称"
+                  placeholder="输入看板名称"
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
@@ -587,7 +677,7 @@ export default function DashboardBuilderPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="添加到仪表盘"
+                          title="添加到看板"
                           onClick={() =>
                             builder.addTile("visualization", { visualization_id: viz.id })
                           }
@@ -606,9 +696,20 @@ export default function DashboardBuilderPage() {
         {/* Right panel — grid canvas */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">布局画布</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">布局画布</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCanvasExpanded(true)}
+                disabled={state.tiles.length === 0}
+              >
+                <Maximize2 className="mr-1 h-4 w-4" />
+                扩展画布
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              拖动手柄调整位置，拖动右下角调整大小；点击瓦片右上角 × 删除。
+              悬停瓦片可见拖动手柄与 配置/预览/删除 按钮；拖动右下角调整大小。
             </p>
           </CardHeader>
           <CardContent>
@@ -627,24 +728,18 @@ export default function DashboardBuilderPage() {
                     onLayoutChange={handleLayoutChange}
                   >
                     {state.tiles.map((tile) => (
-                      <div key={tile.i} className="rounded-lg border bg-background shadow-sm">
-                        <div className="flex items-center justify-between border-b px-2 py-1">
-                          <div className="tile-drag-handle flex cursor-move items-center gap-1 text-xs text-muted-foreground">
-                            <GripVertical className="h-3.5 w-3.5" />
-                            {tileTypeLabel(tile)}
-                          </div>
-                          <button
-                            type="button"
-                            title="删除瓦片"
-                            className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
-                            onClick={() => builder.removeTile(tile.i)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <div className="h-[calc(100%-29px)] overflow-hidden p-1">
-                          {renderTileBody(tile)}
-                        </div>
+                      <div key={tile.i} title={tileTypeLabel(tile)}>
+                        <BuilderTileChrome
+                          onConfigure={
+                            tile.tile_type === "visualization" && tile.visualization_id
+                              ? () => navigate(`/visualizations/builder/${tile.visualization_id}`)
+                              : undefined
+                          }
+                          onPreview={() => setPreviewTile(tile)}
+                          onRemove={() => builder.removeTile(tile.i)}
+                        >
+                          {renderTileBody(tile, Math.max(120, tile.h * 92 - 30))}
+                        </BuilderTileChrome>
                       </div>
                     ))}
                   </GridLayout>
@@ -655,6 +750,63 @@ export default function DashboardBuilderPage() {
         </Card>
       </div>
 
+      {/* Expanded full-screen canvas — WYSIWYG rearranging */}
+      {canvasExpanded && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+          <div className="flex items-center justify-between border-b px-4 py-2">
+            <p className="text-sm font-medium">{state.name || "未命名看板"} — 画布预览</p>
+            <Button variant="outline" size="sm" onClick={() => setCanvasExpanded(false)}>
+              <Minimize2 className="mr-1 h-4 w-4" />
+              退出扩展画布
+            </Button>
+          </div>
+          <div className="flex-1 overflow-auto p-4">
+            <div ref={expandRef as React.RefObject<HTMLDivElement>}>
+              {expandMounted && (
+                <GridLayout
+                  width={expandWidth}
+                  layout={layout}
+                  gridConfig={{ cols: 12, rowHeight: 80, margin: [12, 12] }}
+                  dragConfig={{ handle: ".tile-drag-handle" }}
+                  onLayoutChange={handleLayoutChange}
+                >
+                  {state.tiles.map((tile) => (
+                    <div key={tile.i} title={tileTypeLabel(tile)}>
+                      <BuilderTileChrome
+                        onConfigure={
+                          tile.tile_type === "visualization" && tile.visualization_id
+                            ? () => navigate(`/visualizations/builder/${tile.visualization_id}`)
+                            : undefined
+                        }
+                        onPreview={() => setPreviewTile(tile)}
+                        onRemove={() => builder.removeTile(tile.i)}
+                      >
+                        {renderTileBody(tile, Math.max(120, tile.h * 92 - 30))}
+                      </BuilderTileChrome>
+                    </div>
+                  ))}
+                </GridLayout>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tile preview dialog */}
+      {previewTile && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="flex h-[80vh] w-[90vw] max-w-5xl flex-col rounded-lg bg-background shadow-xl">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <h3 className="text-base font-semibold">{tileTypeLabel(previewTile)}</h3>
+              <Button variant="ghost" size="sm" onClick={() => setPreviewTile(null)} title="关闭">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">{renderTileBody(previewTile, 520)}</div>
+          </div>
+        </div>
+      )}
+
       {/* Overwrite confirmation dialog (name exists → update that dashboard) */}
       {overwriteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -662,7 +814,7 @@ export default function DashboardBuilderPage() {
           <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
             <h3 className="text-lg font-semibold">名称已存在</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              仪表盘名称「{overwriteTarget.name}」已存在，是否修改该仪表盘？
+              看板名称「{overwriteTarget.name}」已存在，是否修改该看板？
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setOverwriteTarget(null)}>
@@ -689,13 +841,13 @@ export default function DashboardBuilderPage() {
           <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
             <h3 className="text-lg font-semibold">名称冲突</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              仪表盘名称已存在，请输入新的名称后重试。
+              看板名称已存在，请输入新的名称后重试。
             </p>
             <input
               type="text"
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
-              placeholder="输入新的仪表盘名称"
+              placeholder="输入新的看板名称"
               className="mt-3 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
             />
             <div className="mt-6 flex justify-end gap-2">

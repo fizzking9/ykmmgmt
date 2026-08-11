@@ -528,6 +528,40 @@ async def test_data_granularity_rebuckets_monthly():
 
 
 @pytest.mark.asyncio
+async def test_data_granularity_week_buckets_start_monday():
+    """granularity=week buckets start on Mondays and preserve totals."""
+    import datetime as dt
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        view_id = await _create_time_view(client)
+        viz_id = await _create_time_viz(client, view_id, with_date_column=True)
+
+        base = await client.get(f"/api/visualizations/{viz_id}/data")
+        base_rows = base.json()["rows"]
+
+        weekly = await client.get(
+            f"/api/visualizations/{viz_id}/data",
+            params={"granularity": "week", "agg": "SUM"},
+        )
+        assert weekly.status_code == 200
+        rows = weekly.json()["rows"]
+        assert len(rows) <= len(base_rows)
+        for row in rows:
+            bucket_date = dt.date.fromisoformat(row["record_created_at"][:10])
+            assert bucket_date.weekday() == 0  # Monday
+        base_total = sum(
+            float(r["refund_amount"])
+            for r in base_rows
+            if r["refund_amount"] is not None and r["record_created_at"] is not None
+        )
+        weekly_total = sum(float(r["refund_amount"]) for r in rows if r["refund_amount"] is not None)
+        assert abs(base_total - weekly_total) < 0.01
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
 async def test_data_time_params_ignored_without_date_column():
     """Time params are ignored when the viz has no date_column profile."""
     transport = ASGITransport(app=app)
