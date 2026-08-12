@@ -198,7 +198,28 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 10 — Platform Data Scraping
+## Phase 10 — Database Schema Management
+
+**Goal:** Inspect, create, edit, and delete database tables through a dedicated UI — no manual SQL or migration files needed.
+
+- [ ] Backend: Schema inspection endpoint — list all tables with column details (name, type, nullable, unique, comment/Chinese label, constraints)
+- [ ] Backend: Table creation endpoint — accepts table name, Chinese display name, column definitions (name, type, Chinese label, nullable, unique); generates SQLAlchemy model + Alembic migration + runs migration
+- [ ] Backend: CSV schema inference endpoint — accepts a CSV file, infers column names/types, suggests Chinese labels from headers, returns proposed schema for user review before creation
+- [ ] Backend: Table edit endpoint — add column, drop column, modify column type; generates Alembic migration for each operation
+- [ ] Backend: Table deletion endpoint — drops table with confirmation, generates Alembic migration
+- [ ] Backend: Dynamic model registry — newly created tables auto-register into `schema_validator._MODEL_REGISTRY` and `TABLE_DISPLAY_NAMES` so they appear in Data Browser / View Builder without restart
+- [ ] Backend: Column type system — supported types: String(N), Text, Integer, Numeric(12,2), DateTime, Boolean; type mapping between SQLAlchemy and frontend picker
+- [ ] Frontend: Sidebar — "Schema Manager" nav item under a database/admin section
+- [ ] Frontend: Table list page — all tables with Chinese names, column count, row count, created date; actions per table: inspect, edit, delete
+- [ ] Frontend: Table detail/inspect page — full column listing with types, constraints, Chinese labels, sample data preview
+- [ ] Frontend: Create table wizard — two paths: (a) manual: define columns one-by-one with type picker and Chinese label input; (b) CSV import: upload CSV, review inferred schema, adjust types/labels, confirm creation
+- [ ] Frontend: Edit table dialog — add new column, remove column, change column type (with warning about data loss for incompatible casts)
+- [ ] Frontend: Delete table confirmation — type-to-confirm pattern, warning about cascading effects on views/visualizations
+- [ ] Frontend: All UI text in Chinese per project convention
+
+---
+
+## Phase 11 — Platform Data Scraping
 
 **Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
 
@@ -213,7 +234,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 11 — Auth & Multi-User
+## Phase 12 — Auth & Multi-User
 
 **Goal:** Only authorized team members can access the dashboard.
 
@@ -224,7 +245,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 12 — Polish & Deploy
+## Phase 13 — Polish & Deploy
 
 **Goal:** Production-ready.
 
