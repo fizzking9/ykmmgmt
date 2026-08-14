@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -247,6 +247,30 @@ export default function ViewBuilderPage() {
 
   // Guard ref to prevent re-loading the same view on every render
   const loadedViewIdRef = useRef<string | null>(null);
+
+  // ── Start blank only on explicit "新建" entries ────────────────────────
+  // Builder state lives in a context above the router so drafts survive
+  // navigation — reset only when (1) the user enters via a "新建" button
+  // (location.state.fresh), or (2) the route id switches from editing an
+  // existing view to no id within this mount. resetState is a stable
+  // callback, so this effect only fires on navigation changes.
+  const location = useLocation();
+  const freshEntry = (location.state as { fresh?: boolean } | null)?.fresh === true;
+  const prevIdRef = useRef<string | undefined>(id);
+  const resetViewState = viewBuilder.resetState;
+  useEffect(() => {
+    const wasEditing = prevIdRef.current !== undefined;
+    prevIdRef.current = id;
+    if (freshEntry || (wasEditing && id === undefined)) {
+      loadedViewIdRef.current = null;
+      resetViewState();
+      // Consume the fresh flag so leaving and coming back (or browser
+      // back) keeps any draft typed after the reset
+      if (freshEntry) {
+        navigate(location.pathname, { replace: true });
+      }
+    }
+  }, [id, freshEntry, resetViewState, navigate, location.pathname]);
 
   // ── Load existing view in edit mode ────────────────────────────────────
   useEffect(() => {

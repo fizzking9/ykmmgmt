@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import { useViews, useViewFullData } from "@/hooks/useViews";
 import {
   useVisualization,
@@ -479,6 +479,32 @@ export default function VisualizationBuilderPage() {
   const [exporting, setExporting] = useState(false);
   // Whether the zoom-in popup is open
   const [zoomOpen, setZoomOpen] = useState(false);
+
+  // ── Start blank only on explicit "新建" entries ────────────────────────
+  // Builder state lives in a context above the router so drafts survive
+  // navigation — reset only when (1) the user enters via a "新建" button
+  // (location.state.fresh), or (2) the route id switches from editing an
+  // existing visualization to no id within this mount. resetState is a
+  // stable callback, so this effect only fires on navigation changes.
+  // Declared before the auto-select/load effects below so the ?view_id=
+  // pre-selection and edit-mode loading still apply afterwards.
+  const location = useLocation();
+  const freshEntry = (location.state as { fresh?: boolean } | null)?.fresh === true;
+  const prevIdRef = useRef<string | undefined>(id);
+  const resetVizState = vizBuilder.resetState;
+  useEffect(() => {
+    const wasEditing = prevIdRef.current !== undefined;
+    prevIdRef.current = id;
+    if (freshEntry || (wasEditing && id === undefined)) {
+      loadedVizIdRef.current = null;
+      resetVizState();
+      // Consume the fresh flag so leaving and coming back (or browser
+      // back) keeps any draft typed after the reset
+      if (freshEntry) {
+        navigate(location.pathname + location.search, { replace: true });
+      }
+    }
+  }, [id, freshEntry, resetVizState, navigate, location.pathname, location.search]);
 
   // ── Auto-select view from query param ──────────────────────────────────
   useEffect(() => {

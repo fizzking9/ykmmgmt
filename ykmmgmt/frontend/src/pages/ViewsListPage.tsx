@@ -264,7 +264,11 @@ export default function ViewsListPage() {
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">数据视图</h2>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/views/builder")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/views/builder", { state: { fresh: true } })}
+          >
             <Plus className="mr-2 h-4 w-4" />
             新建
           </Button>
@@ -335,7 +339,11 @@ export default function ViewsListPage() {
         <div className="rounded-md bg-muted/30 p-16 text-center">
           <Eye className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-lg text-muted-foreground">暂无保存的视图，请先创建数据视图</p>
-          <Button className="mt-4" variant="outline" onClick={() => navigate("/views/builder")}>
+          <Button
+            className="mt-4"
+            variant="outline"
+            onClick={() => navigate("/views/builder", { state: { fresh: true } })}
+          >
             创建视图
           </Button>
         </div>
