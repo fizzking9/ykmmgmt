@@ -41,6 +41,29 @@ def register_model(table_name: str, model_class: type[DeclarativeBase]) -> None:
     _MODEL_REGISTRY[table_name] = model_class
 
 
+def unregister_model(table_name: str) -> None:
+    """Remove a model from the registry (used when a dynamic table is dropped)."""
+    _MODEL_REGISTRY.pop(table_name, None)
+
+
+def set_table_display_name(english_name: str, chinese_name: str) -> None:
+    """Add/update the Chinese display name for a table and refresh the reverse map."""
+    TABLE_DISPLAY_NAMES[english_name] = chinese_name
+    _rebuild_chinese_map()
+
+
+def remove_table_display_name(english_name: str) -> None:
+    """Remove a table's display name entry and refresh the reverse map."""
+    TABLE_DISPLAY_NAMES.pop(english_name, None)
+    _rebuild_chinese_map()
+
+
+def _rebuild_chinese_map() -> None:
+    """Rebuild CHINESE_TO_ENGLISH_TABLE in place (keeps module references valid)."""
+    CHINESE_TO_ENGLISH_TABLE.clear()
+    CHINESE_TO_ENGLISH_TABLE.update({v: k for k, v in TABLE_DISPLAY_NAMES.items()})
+
+
 def get_registered_tables() -> list[str]:
     """Return list of registered English table names."""
     return list(_MODEL_REGISTRY.keys())
@@ -70,6 +93,9 @@ def build_comment_mapping(model_class: type[DeclarativeBase]) -> dict[str, str]:
 
     Handles duplicate comments (e.g., two "备注" columns) by using positional
     ordering: first occurrence in model → first match, second → second.
+
+    Only the surrogate ``id`` column is excluded — a user-defined primary key
+    is a business column and must be importable from the file.
     """
     mapper = sa_inspect(model_class)
     mapping: dict[str, str] = {}
@@ -77,7 +103,7 @@ def build_comment_mapping(model_class: type[DeclarativeBase]) -> dict[str, str]:
 
     for col in mapper.columns:
         comment = getattr(col, "comment", None)
-        if not comment or col.primary_key or col.name in ("imported_at", "created_at", "content_hash"):
+        if not comment or col.name == "id" or col.name in ("imported_at", "created_at", "content_hash"):
             continue
         comment = comment.strip()
         if comment not in mapping:
@@ -95,7 +121,7 @@ def get_comment_order(model_class: type[DeclarativeBase]) -> dict[str, list[str]
     order: dict[str, list[str]] = {}
     for col in mapper.columns:
         comment = getattr(col, "comment", None)
-        if not comment or col.primary_key or col.name in ("imported_at", "created_at"):
+        if not comment or col.name == "id" or col.name in ("imported_at", "created_at"):
             continue
         comment = comment.strip()
         if comment not in order:
@@ -108,10 +134,15 @@ def validate_headers(
     file_headers: list[str],
     target_table: str,
 ) -> SchemaValidationResult:
-    """Validate file headers against the target table's model comments.
+    """Validate file headers against the target table's column labels.
+
+    Headers are matched primarily against the Chinese labels (column
+    comments); a header that equals a column's real name also matches, so
+    files with English headers — and production tables whose column names
+    are themselves Chinese — import without extra configuration.
 
     Returns a SchemaValidationResult. If valid=True, column_mapping contains
-    {chinese_header: english_column} for the parser to rename columns.
+    {header: english_column} for the parser to rename columns.
     """
     english_name = resolve_target_table(target_table)
     if english_name is None:
@@ -138,10 +169,19 @@ def validate_headers(
     comment_order = get_comment_order(model_class)
     expected_comments = list(comment_to_col.keys())
 
+    # Fallback: match by the column's real name (skipping bookkeeping cols)
+    mapper = sa_inspect(model_class)
+    name_to_col: dict[str, str] = {}
+    for col in mapper.columns:
+        if col.name == "id" or col.name in ("imported_at", "created_at", "content_hash"):
+            continue
+        name_to_col[col.name] = col.name
+
     # Track which headers matched
     column_mapping: dict[str, str] = {}
     missing: list[str] = []
     unexpected: list[str] = []
+    used_cols: set[str] = set()
 
     # Track usage count per comment for disambiguation
     comment_use_count: dict[str, int] = dict.fromkeys(comment_order, 0)
@@ -151,23 +191,27 @@ def validate_headers(
         if not header:
             continue
 
-        # Try exact match first
+        # 1) Label (Chinese comment) match
         if header in comment_to_col:
             idx = comment_use_count[header]
             cols = comment_order[header]
-            if idx < len(cols):
+            if idx < len(cols) and cols[idx] not in used_cols:
                 column_mapping[header] = cols[idx]
+                used_cols.add(cols[idx])
                 comment_use_count[header] += 1
             else:
                 unexpected.append(header)
+        # 2) Real column name match
+        elif header in name_to_col and name_to_col[header] not in used_cols:
+            column_mapping[header] = name_to_col[header]
+            used_cols.add(name_to_col[header])
         else:
             unexpected.append(header)
 
     # Find required columns (non-nullable without default)
-    mapper = sa_inspect(model_class)
     for col in mapper.columns:
         comment = getattr(col, "comment", None)
-        if not comment or col.primary_key or col.name in ("imported_at", "created_at", "content_hash"):
+        if not comment or col.name == "id" or col.name in ("imported_at", "created_at", "content_hash"):
             continue
         comment = comment.strip()
         if not col.nullable and col.default is None and col.server_default is None:

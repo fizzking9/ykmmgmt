@@ -25,12 +25,8 @@ class RefundOrder(Base):
     refund_method: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="退款方式")
     audit_remark: Mapped[str | None] = mapped_column(Text, nullable=True, comment="审核备注")
     auditor: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="审核人")
-    record_created_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="创建时间"
-    )
-    record_updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="更新时间"
-    )
+    record_created_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True, comment="创建时间")
+    record_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True, comment="更新时间")
     operator: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="操作人")
     plan_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True, comment="套餐价格")
     imported_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now(), comment="导入时间")

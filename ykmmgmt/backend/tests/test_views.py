@@ -94,9 +94,7 @@ async def test_get_view_404():
     """GET /api/views/{id} returns 404 for non-existent view."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get(
-            "/api/views/00000000-0000-0000-0000-000000000000"
-        )
+        response = await client.get("/api/views/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
 
 
@@ -107,9 +105,7 @@ async def test_get_view_data():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         view_id = await _create_view(client)
         try:
-            response = await client.get(
-                f"/api/views/{view_id}/data", params={"page": 1, "size": 10}
-            )
+            response = await client.get(f"/api/views/{view_id}/data", params={"page": 1, "size": 10})
             assert response.status_code == 200
             data = response.json()
             assert "rows" in data
@@ -131,9 +127,7 @@ async def test_get_view_data_404():
     """GET /api/views/{id}/data returns 404 for non-existent view."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get(
-            "/api/views/00000000-0000-0000-0000-000000000000/data"
-        )
+        response = await client.get("/api/views/00000000-0000-0000-0000-000000000000/data")
         assert response.status_code == 404
 
 
@@ -144,9 +138,7 @@ async def test_get_view_data_size_capped():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         view_id = await _create_view(client)
         try:
-            response = await client.get(
-                f"/api/views/{view_id}/data", params={"page": 1, "size": 200}
-            )
+            response = await client.get(f"/api/views/{view_id}/data", params={"page": 1, "size": 200})
             assert response.status_code == 200
             data = response.json()
             # size should be clamped to 100
@@ -178,7 +170,5 @@ async def test_delete_view_404():
     """DELETE /api/views/{id} returns 404 for non-existent view."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.delete(
-            "/api/views/00000000-0000-0000-0000-000000000000"
-        )
+        response = await client.delete("/api/views/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404

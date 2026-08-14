@@ -351,9 +351,7 @@ async def get_visualization_data(
     date_column = viz.config_json.get("date_column")
     time_active = bool(date_column) and bool(start or end or granularity or agg)
     if time_active:
-        sql, params = await _apply_time_profile(
-            db, sql, params, date_column, start, end, granularity, agg
-        )
+        sql, params = await _apply_time_profile(db, sql, params, date_column, start, end, granularity, agg)
 
     # Execute full query (no pagination)
     try:

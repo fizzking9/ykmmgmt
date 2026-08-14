@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   PieChart,
   Plus,
+  Table2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -30,6 +31,8 @@ const groups: NavGroup[] = [
       { to: "/upload", label: "上传数据", icon: <Upload className="h-4 w-4" /> },
       { to: "/data-browser", label: "数据浏览", icon: <Database className="h-4 w-4" /> },
       { to: "/imports", label: "导入历史", icon: <History className="h-4 w-4" /> },
+      { to: "/schema", label: "数据表管理", icon: <Table2 className="h-4 w-4" /> },
+      { to: "/schema/create", label: "新建数据表", icon: <Plus className="h-4 w-4" /> },
     ],
   },
   {
@@ -64,6 +67,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
   // "可视化" (/visualizations) while on the builder (/visualizations/builder/*).
   const isLinkActive = (to: string) => {
     if (to === "/views") return location.pathname === "/views";
+    if (to === "/schema") return location.pathname === "/schema";
     if (to === "/visualizations") {
       return (
         location.pathname === "/visualizations" ||

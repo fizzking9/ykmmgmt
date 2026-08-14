@@ -594,9 +594,7 @@ async def test_data_invalid_granularity_rejected():
         view_id = await _create_time_view(client)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
-        resp = await client.get(
-            f"/api/visualizations/{viz_id}/data", params={"granularity": "hour"}
-        )
+        resp = await client.get(f"/api/visualizations/{viz_id}/data", params={"granularity": "hour"})
         assert resp.status_code == 422
 
         await _cleanup(client, view_id, [viz_id])
@@ -627,9 +625,7 @@ async def test_data_invalid_start_date_rejected():
         view_id = await _create_time_view(client)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
-        resp = await client.get(
-            f"/api/visualizations/{viz_id}/data", params={"start": "not-a-date"}
-        )
+        resp = await client.get(f"/api/visualizations/{viz_id}/data", params={"start": "not-a-date"})
         assert resp.status_code == 422
         assert "格式无效" in resp.json()["detail"]
 

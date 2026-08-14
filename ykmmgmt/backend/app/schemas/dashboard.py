@@ -29,17 +29,13 @@ class DashboardTile(BaseModel):
 
     i: str = Field(..., min_length=1, description="瓦片唯一标识（布局键）")
     tile_type: TileType = Field(..., description="瓦片类型")
-    visualization_id: uuid.UUID | None = Field(
-        None, description="关联可视化ID（tile_type=visualization 时必填）"
-    )
+    visualization_id: uuid.UUID | None = Field(None, description="关联可视化ID（tile_type=visualization 时必填）")
     x: int = Field(..., ge=0, description="网格列位置")
     y: int = Field(..., ge=0, description="网格行位置")
     w: int = Field(..., ge=1, description="网格宽度")
     h: int = Field(..., ge=1, description="网格高度")
     content: str | None = Field(None, description="文本瓦片内容（Markdown）")
-    config: dict[str, Any] | None = Field(
-        None, description="KPI 瓦片配置（view_id/value_column/label/agg）"
-    )
+    config: dict[str, Any] | None = Field(None, description="KPI 瓦片配置（view_id/value_column/label/agg）")
 
     @model_validator(mode="after")
     def _validate_tile_payload(self) -> "DashboardTile":
@@ -62,9 +58,7 @@ class DashboardCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255, description="仪表盘名称")
     description: str | None = Field(None, description="仪表盘描述")
-    layout_json: list[DashboardTile] = Field(
-        default_factory=list, description="布局瓦片数组"
-    )
+    layout_json: list[DashboardTile] = Field(default_factory=list, description="布局瓦片数组")
 
 
 class DashboardUpdate(BaseModel):

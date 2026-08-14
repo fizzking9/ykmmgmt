@@ -64,10 +64,34 @@ class CleaningReport:
 CleaningStep = Callable[[pd.DataFrame, CleaningReport], tuple[pd.DataFrame, CleaningReport]]
 
 
+def make_dedup_by_key(key_cols: list[str]):
+    """Build a step collapsing duplicate key rows (last occurrence wins)."""
+
+    def dedup_by_key(df: pd.DataFrame, report: CleaningReport) -> tuple[pd.DataFrame, CleaningReport]:
+        rows_before = len(df)
+        cols = [c for c in key_cols if c in df.columns]
+        if cols:
+            df = df.drop_duplicates(subset=cols, keep="last").reset_index(drop=True)
+        rows_dropped = rows_before - len(df)
+        report.add_step(
+            CleaningStepReport(
+                step_name="deduplicate_by_key",
+                rows_before=rows_before,
+                rows_after=len(df),
+                rows_dropped=0,
+                rows_modified=rows_dropped,
+                warnings=[f"{rows_dropped} duplicate key rows collapsed (kept latest)"] if rows_dropped > 0 else [],
+            )
+        )
+        return df, report
+
+    return dedup_by_key
+
+
 class CleaningPipeline:
     """Runs a sequence of cleaning steps on a DataFrame."""
 
-    def __init__(self) -> None:
+    def __init__(self, dedup_key: list[str] | None = None) -> None:
         self._common_steps: list[CleaningStep] = [
             strip_whitespace,
             handle_missing_values,
@@ -75,6 +99,11 @@ class CleaningPipeline:
             deduplicate_rows,
             validate_values,
         ]
+        # Tables with a user primary key: exact-duplicate rows are legitimate
+        # re-submissions of the same key, not dirty data — collapse them
+        # (last occurrence wins) instead of rejecting them.
+        if dedup_key:
+            self._common_steps.insert(-1, make_dedup_by_key(dedup_key))
         self._table_steps: list[CleaningStep] = []
 
     def add_table_step(self, step: CleaningStep) -> None:
@@ -84,6 +113,10 @@ class CleaningPipeline:
     def clear_common_steps(self) -> None:
         """Remove all common cleaning steps (for pre-mapping structural-only runs)."""
         self._common_steps.clear()
+
+    def disable_exact_dedup(self) -> None:
+        """Drop the exact-duplicate step (keyed tables dedup by key instead)."""
+        self._common_steps = [s for s in self._common_steps if s is not deduplicate_rows]
 
     def run(self, df: pd.DataFrame) -> tuple[pd.DataFrame, CleaningReport]:
         """Run all steps (common + table-specific) on the DataFrame."""

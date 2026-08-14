@@ -202,20 +202,29 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 **Goal:** Inspect, create, edit, and delete database tables through a dedicated UI — no manual SQL or migration files needed.
 
-- [ ] Backend: Schema inspection endpoint — list all tables with column details (name, type, nullable, unique, comment/Chinese label, constraints)
-- [ ] Backend: Table creation endpoint — accepts table name, Chinese display name, column definitions (name, type, Chinese label, nullable, unique); generates SQLAlchemy model + Alembic migration + runs migration
-- [ ] Backend: CSV schema inference endpoint — accepts a CSV file, infers column names/types, suggests Chinese labels from headers, returns proposed schema for user review before creation
-- [ ] Backend: Table edit endpoint — add column, drop column, modify column type; generates Alembic migration for each operation
-- [ ] Backend: Table deletion endpoint — drops table with confirmation, generates Alembic migration
-- [ ] Backend: Dynamic model registry — newly created tables auto-register into `schema_validator._MODEL_REGISTRY` and `TABLE_DISPLAY_NAMES` so they appear in Data Browser / View Builder without restart
-- [ ] Backend: Column type system — supported types: String(N), Text, Integer, Numeric(12,2), DateTime, Boolean; type mapping between SQLAlchemy and frontend picker
-- [ ] Frontend: Sidebar — "Schema Manager" nav item under a database/admin section
-- [ ] Frontend: Table list page — all tables with Chinese names, column count, row count, created date; actions per table: inspect, edit, delete
-- [ ] Frontend: Table detail/inspect page — full column listing with types, constraints, Chinese labels, sample data preview
-- [ ] Frontend: Create table wizard — two paths: (a) manual: define columns one-by-one with type picker and Chinese label input; (b) CSV import: upload CSV, review inferred schema, adjust types/labels, confirm creation
-- [ ] Frontend: Edit table dialog — add new column, remove column, change column type (with warning about data loss for incompatible casts)
-- [ ] Frontend: Delete table confirmation — type-to-confirm pattern, warning about cascading effects on views/visualizations
-- [ ] Frontend: All UI text in Chinese per project convention
+- [x] Backend: Schema inspection endpoint — list all tables with column details (name, type, nullable, unique, comment/Chinese label, constraints)
+- [x] Backend: Table creation endpoint — accepts table name, Chinese display name, column definitions (name, type, Chinese label, nullable, unique); generates SQLAlchemy model + Alembic migration + runs migration
+- [x] Backend: CSV schema inference endpoint — accepts a CSV file, infers column names/types, suggests Chinese labels from headers, returns proposed schema for user review before creation
+- [x] Backend: Table edit endpoint — add column, drop column, modify column type; generates Alembic migration for each operation
+- [x] Backend: Table deletion endpoint — drops table with confirmation, generates Alembic migration
+- [x] Backend: Dynamic model registry — newly created tables auto-register into `schema_validator._MODEL_REGISTRY` and `TABLE_DISPLAY_NAMES` so they appear in Data Browser / View Builder without restart
+- [x] Backend: Column type system — supported types: String(N), Text, Integer, Numeric(12,2), DateTime, Boolean; type mapping between SQLAlchemy and frontend picker
+- [x] Frontend: Sidebar — "Schema Manager" nav item under a database/admin section
+- [x] Frontend: Table list page — all tables with Chinese names, column count, row count, created date; actions per table: inspect, edit, delete
+- [x] Frontend: Table detail/inspect page — full column listing with types, constraints, Chinese labels, sample data preview
+- [x] Frontend: Create table wizard — two paths: (a) manual: define columns one-by-one with type picker and Chinese label input; (b) CSV import: upload CSV, review inferred schema, adjust types/labels, confirm creation
+- [x] Frontend: Edit table dialog — add new column, remove column, change column type (with warning about data loss for incompatible casts)
+- [x] Frontend: Delete table confirmation — type-to-confirm pattern, warning about cascading effects on views/visualizations
+- [x] Frontend: All UI text in Chinese per project convention
+
+**Extended scope** (requested during implementation, delivered in the same phase):
+
+- [x] Upload robustness & matching — multi-BOM stripping; Chinese-label-first header matching with column-name fallback; strict gate rejecting files with unmapped headers or missing required columns (422 with missing/unexpected lists); runtime migrations relocated outside the reload watch tree
+- [x] Table & column renaming — physical table rename with dependency protection (409 when views/visualizations reference it), display-name editing via table comment, edit-page caveat tooltips (opaque InfoTooltip)
+- [x] Foreign keys to unique keys — FK targets extended from PK-only to PK or unique column, with picker markers (…・主键 / …・唯一)
+- [x] Column metadata — description + default value per column (column_meta), comprehensive per-column editing in a single migration
+- [x] Ingestion settings — per-table upsert key (optional, composite, defaults to PK) + dedup toggle stored in table_meta; dedup disable only allowed without PK/unique/upsert key; keyless dedup-on tables get content_hash
+- [x] Import counter semantics — authoritative 新增/更新/跳过/拒绝 definitions with full fetch-compare-write upsert for keyed tables; partial uploads never null omitted columns; counters increment only after successful writes
 
 ---
 
@@ -252,6 +261,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [ ] Docker multi-stage builds for backend and frontend
 - [ ] Nginx serving the React SPA + proxying `/api` to FastAPI
 - [ ] Environment-based config (`.env` for secrets, connection strings)
+- [ ] Schema migration lifecycle: squash the Schema Manager's runtime migrations (`runtime_migrations/`) into a version-controlled baseline migration (checkpoint), so redeployments and DB restores never depend on machine-local files; startup guard when `alembic_version` references a missing revision
 - [ ] Comprehensive error handling and user-friendly error pages
 - [ ] Logging: structured logs (JSON) from FastAPI
 - [ ] README with setup instructions for new developers

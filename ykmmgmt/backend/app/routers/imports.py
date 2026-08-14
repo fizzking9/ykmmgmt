@@ -98,18 +98,20 @@ async def list_imports(
     items = []
     for job, source in rows:
         config = source.config or {}
-        items.append({
-            "id": job.id,
-            "file_name": config.get("file_path", "未知文件"),
-            "target_table": get_chinese_table_name(config.get("target_table", "")),
-            "status": job.status,
-            "total_rows": job.row_count,
-            "rows_inserted": job.rows_inserted,
-            "rows_updated": job.rows_updated,
-            "rows_skipped": job.rows_skipped,
-            "rows_rejected": job.error_count,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-        })
+        items.append(
+            {
+                "id": job.id,
+                "file_name": config.get("file_path", "未知文件"),
+                "target_table": get_chinese_table_name(config.get("target_table", "")),
+                "status": job.status,
+                "total_rows": job.row_count,
+                "rows_inserted": job.rows_inserted,
+                "rows_updated": job.rows_updated,
+                "rows_skipped": job.rows_skipped,
+                "rows_rejected": job.error_count,
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+            }
+        )
 
     return {
         "items": items,

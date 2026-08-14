@@ -86,9 +86,7 @@ async def _validate_tile_references(tiles: list[DashboardTile], db: AsyncSession
 # ── CRUD Endpoints ──────────────────────────────────────────────────────────
 
 
-async def _check_name_conflict(
-    name: str, db: AsyncSession, *, exclude_id: uuid.UUID | None = None
-) -> None:
+async def _check_name_conflict(name: str, db: AsyncSession, *, exclude_id: uuid.UUID | None = None) -> None:
     """Raise 409 if another dashboard already uses this name.
 
     Pre-checked via SELECT (instead of catching the flush failure) so the

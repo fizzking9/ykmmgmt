@@ -203,9 +203,7 @@ class ViewSQLBuilder:
                 if key in seen_select:
                     continue
                 seen_select.add(key)
-                select_parts.append(
-                    f"{self._computed_exprs[alias]} AS {_quote_ident(alias)}"
-                )
+                select_parts.append(f"{self._computed_exprs[alias]} AS {_quote_ident(alias)}")
 
         # Aggregations
         if self._config.aggregations:
@@ -273,14 +271,10 @@ class ViewSQLBuilder:
             base_right = _base_table_name(join.right_table)
             if join.right_alias:
                 clause = (
-                    f"{jt} {_quote_ident(base_right)} AS {_quote_ident(join.right_alias)} "
-                    f"ON {left_col} = {right_col}"
+                    f"{jt} {_quote_ident(base_right)} AS {_quote_ident(join.right_alias)} ON {left_col} = {right_col}"
                 )
             else:
-                clause = (
-                    f"{jt} {_quote_ident(join.right_table)} "
-                    f"ON {left_col} = {right_col}"
-                )
+                clause = f"{jt} {_quote_ident(join.right_table)} ON {left_col} = {right_col}"
             clauses.append(clause)
 
         return "\n".join(clauses)
@@ -316,6 +310,7 @@ class ViewSQLBuilder:
             # Import here to avoid top-level import overhead
             from datetime import date as dt_date
             from datetime import timedelta
+
             conditions: list[str] = []
             if f.date_start:
                 p = self._next_param()
@@ -471,9 +466,7 @@ class ViewSQLBuilder:
         if not self._config.order_by:
             return ""
         # Collect aggregation aliases for ORDER BY reference
-        agg_aliases: set[str] = {
-            a.alias for a in self._config.aggregations if a.alias
-        }
+        agg_aliases: set[str] = {a.alias for a in self._config.aggregations if a.alias}
         cols: list[str] = []
         for o in self._config.order_by:
             if o.column in self._computed_exprs or o.column in agg_aliases:
@@ -523,10 +516,7 @@ class ViewSQLBuilder:
         if not found:
             raise SQLBuildError(f"列 '{column}' 在任何表中都不存在")
         if len(found) > 1:
-            raise SQLBuildError(
-                f"列 '{column}' 在多个表中存在 ({', '.join(found)})，"
-                f"请使用 '表名.列名' 格式指定"
-            )
+            raise SQLBuildError(f"列 '{column}' 在多个表中存在 ({', '.join(found)})，请使用 '表名.列名' 格式指定")
 
         tbl = found[0]
         return f"{_quote_ident(tbl)}.{_quote_ident(column)}"
@@ -538,7 +528,4 @@ class ViewSQLBuilder:
             raise SQLBuildError(f"数据表 '{table}' 不存在")
         if column not in cols:
             available = ", ".join(list(cols.keys())[:10])
-            raise SQLBuildError(
-                f"列 '{column}' 在表 '{table}' 中不存在。"
-                f"可用列: {available}"
-            )
+            raise SQLBuildError(f"列 '{column}' 在表 '{table}' 中不存在。可用列: {available}")

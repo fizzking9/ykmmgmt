@@ -41,9 +41,14 @@ def parse_csv(filepath: Path | str) -> tuple[pd.DataFrame, list[str]]:
     with open(filepath, encoding=encoding) as f:
         content = f.read().replace("\t", "")
 
+    # Strip leading BOM(s). utf-8-sig removes one BOM, but files sometimes
+    # carry more than one; any remaining \ufeff would glue onto the first
+    # header and break Chinese-label matching.
+    content = content.lstrip("\ufeff")
+
     reader = csv.reader(io.StringIO(content))
     raw_headers = next(reader)
-    raw_headers = [h.strip() for h in raw_headers]
+    raw_headers = [h.strip().lstrip("\ufeff") for h in raw_headers]
 
     rows = [row for row in reader if any(cell.strip() for cell in row)]
 

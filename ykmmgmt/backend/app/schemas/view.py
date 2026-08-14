@@ -71,8 +71,7 @@ class ComputedColumnSpec(BaseModel):
     expression_type: Literal["arithmetic", "datetime_shift", "datetime_trunc"] = Field(
         ...,
         description=(
-            "'arithmetic' (numeric +-*/), 'datetime_shift' (date ± interval), "
-            "or 'datetime_trunc' (extract date part)"
+            "'arithmetic' (numeric +-*/), 'datetime_shift' (date ± interval), or 'datetime_trunc' (extract date part)"
         ),
     )
     # ── Arithmetic fields (chained) ──

@@ -10,9 +10,7 @@ from pydantic import BaseModel, Field
 
 CHART_TYPES = ("table", "kpi_card", "bar", "line", "pie", "scatter", "histogram", "boxplot")
 
-ChartType = Literal[
-    "table", "kpi_card", "bar", "line", "pie", "scatter", "histogram", "boxplot"
-]
+ChartType = Literal["table", "kpi_card", "bar", "line", "pie", "scatter", "histogram", "boxplot"]
 
 # Required config_json keys per chart type
 CHART_CONFIG_REQUIRED_KEYS: dict[str, set[str]] = {

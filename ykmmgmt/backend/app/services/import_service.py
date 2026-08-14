@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import and_, or_, select
+from sqlalchemy import UniqueConstraint, and_, or_, select
 from sqlalchemy import func as sa_func
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import insert
@@ -43,6 +43,15 @@ def get_upsert_key(model_class: Any) -> list[str]:
 _METADATA_COLS = {"id", "imported_at", "created_at", "content_hash"}
 
 
+def _content_hash_constraint_name(model_class: Any) -> str | None:
+    """Find the unique constraint name backing the content_hash column, if any."""
+    for con in model_class.__table__.constraints:
+        if isinstance(con, UniqueConstraint) and con.name:
+            if [c.name for c in con.columns] == ["content_hash"]:
+                return con.name
+    return None
+
+
 def _compute_content_hash(row_data: dict[str, Any], business_cols: list[str]) -> str:
     """Compute SHA-256 hash of business columns for dedup.
 
@@ -68,7 +77,8 @@ def _values_equal(a: Any, b: Any) -> bool:
 
     PostgreSQL NUMERIC columns are returned as Decimal by SQLAlchemy,
     but _coerce_value produces float.  Direct != comparison can return
-    True even when values are numerically identical.
+    True even when values are numerically identical.  DATE columns return
+    date while the importer produces datetime — compare by date part.
     """
     if a is None and b is None:
         return True
@@ -77,6 +87,14 @@ def _values_equal(a: Any, b: Any) -> bool:
     # Normalize empty string to None
     if a == "" or b == "":
         return (a or None) == (b or None)
+    # Temporal types: datetime == date is always False in Python, so
+    # compare by date part unless both sides carry a time component.
+    if isinstance(a, (datetime.datetime, datetime.date)) and isinstance(b, (datetime.datetime, datetime.date)):
+        if isinstance(a, datetime.datetime) and isinstance(b, datetime.datetime):
+            return a == b
+        a_date = a.date() if isinstance(a, datetime.datetime) else a
+        b_date = b.date() if isinstance(b, datetime.datetime) else b
+        return a_date == b_date
     # If both are numeric types, compare via Decimal for precision
     if isinstance(a, (int, float, Decimal)) and isinstance(b, (int, float, Decimal)):
         try:
@@ -155,8 +173,13 @@ class ImportService:
 
         try:
             result = await self._process_import(
-                filepath, target_table, english_name, model_class,
-                chinese_name, job, display_filename,
+                filepath,
+                target_table,
+                english_name,
+                model_class,
+                chinese_name,
+                job,
+                display_filename,
             )
             await self.db.commit()
             return result
@@ -204,20 +227,27 @@ class ImportService:
         # Record original row count BEFORE any cleaning (for rejection tracking)
         original_row_count = len(df)
 
-        # Step 2: Schema validation gate
+        # Step 2: Schema validation gate — every file header must map to a
+        # table column (Chinese label first, real column name as fallback),
+        # and every required column must be covered.
         validation = validate_headers(raw_headers, target_table)
-        if not validation.valid:
+        if not validation.valid or validation.unexpected:
+            problems = []
             if validation.missing:
-                raise ImportError(
-                    message="文件列与目标表不匹配",
-                    status_code=422,
-                    details={
-                        "target_table": validation.target_table,
-                        "missing": validation.missing,
-                        "unexpected": validation.unexpected,
-                        "expected": validation.expected,
-                    },
-                )
+                problems.append("缺少必需列：" + "、".join(validation.missing))
+            if validation.unexpected:
+                problems.append("以下文件列无法匹配：" + "、".join(validation.unexpected))
+            suffix = f"（{'；'.join(problems)}）" if problems else ""
+            raise ImportError(
+                message=f"文件列与目标表不匹配{suffix}",
+                status_code=422,
+                details={
+                    "target_table": validation.target_table,
+                    "missing": validation.missing,
+                    "unexpected": validation.unexpected,
+                    "expected": validation.expected,
+                },
+            )
 
         # Step 3: Run table-specific structural cleaning BEFORE column mapping
         pre_pipeline = CleaningPipeline()
@@ -229,8 +259,22 @@ class ImportService:
         # Step 4: Rename columns from Chinese to English using mapping
         df = self._apply_column_mapping(df, validation.column_mapping, raw_headers)
 
-        # Step 5: Run common cleaning pipeline (content cleanup)
-        pipeline = CleaningPipeline()
+        # Step 5: Run common cleaning pipeline (content cleanup). Keyed
+        # tables (explicit upsert key or user PK) collapse duplicate key
+        # rows — last occurrence wins — instead of treating exact duplicates
+        # as dirty data. Keyless tables keep exact-duplicate dedup unless
+        # dedup was explicitly disabled at table creation (pure insert).
+        mapper = sa_inspect(model_class)
+        pk_cols = [c.name for c in mapper.columns if c.primary_key and c.name not in _METADATA_COLS]
+        business_key = [k for k in get_upsert_key(model_class) if k != "content_hash"] or pk_cols
+        dedup_enabled = getattr(model_class, "__dedup_enabled__", True)
+        if business_key:
+            pipeline = CleaningPipeline(dedup_key=business_key)
+            pipeline.disable_exact_dedup()
+        else:
+            pipeline = CleaningPipeline()
+            if not dedup_enabled:
+                pipeline.disable_exact_dedup()
         df, cleaning_report = pipeline.run(df)
 
         pre_report.steps.extend(cleaning_report.steps)
@@ -244,18 +288,23 @@ class ImportService:
         rows_rejected_insert = 0
         errors: list[dict] = []
 
-        # Calculate rows dropped during cleaning
-        rows_dropped_cleaning = original_row_count - len(df)
+        # Rows genuinely dropped by cleaning steps (invalid/dirty data).
+        # Duplicate collapses (key duplicates or exact duplicates) are NOT
+        # rejections — they are valid rows requiring no DB change → skipped.
+        rows_dup_cleaning = sum(s.rows_dropped for s in cleaning_report.steps if s.step_name == "deduplicate_rows")
+        rows_dropped_cleaning = sum(s.rows_dropped for s in cleaning_report.steps) - rows_dup_cleaning
+        rows_collapsed_key = sum(s.rows_modified for s in cleaning_report.steps if s.step_name == "deduplicate_by_key")
 
         if not df.empty:
-            rows_inserted, rows_updated, rows_skipped, rows_rejected_insert, errors = (
-                await self._insert_rows(model_class, df, job.id)
+            rows_inserted, rows_updated, rows_skipped, rows_rejected_insert, errors = await self._insert_rows(
+                model_class, df, job.id
             )
 
         # Total rejected = rows dropped in cleaning + rows rejected during insert
         total_rejected = rows_dropped_cleaning + rows_rejected_insert
         # Total rows = original file row count (before any cleaning)
         total_rows = original_row_count
+        rows_skipped += rows_collapsed_key + rows_dup_cleaning
 
         await self._finish_import_job(
             job,
@@ -371,6 +420,10 @@ class ImportService:
 
         mapper = sa_inspect(model_class)
         upsert_key = get_upsert_key(model_class)
+        # A user primary key is the natural match key: PK tables get full
+        # upsert semantics (insert / update-on-change / skip-identical).
+        if not upsert_key:
+            upsert_key = [c.name for c in mapper.columns if c.primary_key and c.name not in _METADATA_COLS]
         use_upsert = len(upsert_key) > 0
 
         # Build column metadata: name → (type, nullable, max_length)
@@ -397,10 +450,16 @@ class ImportService:
         if not insert_cols:
             return 0, 0, 0, 0, []
 
-        # Determine which columns to update on conflict
-        # Exclude: primary key, upsert key columns, and timestamp columns
+        # Unique constraint on content_hash (for insert-only dedup tables)
+        hash_constraint = _content_hash_constraint_name(model_class) if has_content_hash else None
+
+        # Determine which columns to update on conflict.
+        # Exclude: key columns and timestamps. Only columns actually present
+        # in the file are ever compared/written — a partial upload must
+        # neither null out nor count changes for omitted columns.
         exclude_from_update = {"id"} | set(upsert_key) | {"imported_at"}
         update_cols = [c.name for c in mapper.columns if c.name not in exclude_from_update]
+        update_cols = [c for c in update_cols if c in insert_cols]
 
         # Pre-validate all rows and build clean data list
         clean_rows: list[dict] = []
@@ -450,8 +509,11 @@ class ImportService:
                 # Fetch existing rows to determine insert vs update vs no-change
                 existing_map = await self._fetch_existing_rows(model_class, upsert_key, batch)
 
-                # Separate rows into new, changed, and unchanged
-                rows_to_upsert: list[dict] = []
+                # Separate rows into new, changed, and unchanged. Counters
+                # are NOT incremented here — a row only counts as 新增/更新
+                # once its write succeeds; a failed write (e.g. FK violation)
+                # counts as 拒绝 only.
+                rows_to_upsert: list[tuple[dict, str]] = []
                 for row_data in batch:
                     key = self._make_lookup_key(row_data, upsert_key)
                     if key is None:
@@ -461,28 +523,31 @@ class ImportService:
                     if key in existing_map:
                         existing_row = existing_map[key]
                         if _row_has_changes(row_data, existing_row, update_cols):
-                            updated += 1
-                            rows_to_upsert.append(row_data)
+                            rows_to_upsert.append((row_data, "update"))
                         else:
                             truly_skipped += 1
                     else:
-                        inserted += 1
-                        rows_to_upsert.append(row_data)
+                        rows_to_upsert.append((row_data, "insert"))
 
                 # Perform upsert for rows that actually need it
                 if rows_to_upsert:
                     try:
                         async with self.db.begin_nested():
-                            stmt = insert(model_class).values(rows_to_upsert)
+                            stmt = insert(model_class).values([r for r, _ in rows_to_upsert])
                             stmt = stmt.on_conflict_do_update(
                                 index_elements=upsert_key,
                                 set_={col: getattr(stmt.excluded, col) for col in update_cols}
                                 | {"imported_at": sa_func.now()},
                             )
                             await self.db.execute(stmt)
+                        for _, intent in rows_to_upsert:
+                            if intent == "insert":
+                                inserted += 1
+                            else:
+                                updated += 1
                     except Exception:
                         # Batch failed — fall back to individual rows
-                        for i, row_data in enumerate(rows_to_upsert):
+                        for i, (row_data, intent) in enumerate(rows_to_upsert):
                             try:
                                 async with self.db.begin_nested():
                                     stmt = insert(model_class).values(**row_data)
@@ -492,6 +557,10 @@ class ImportService:
                                         | {"imported_at": sa_func.now()},
                                     )
                                     await self.db.execute(stmt)
+                                if intent == "insert":
+                                    inserted += 1
+                                else:
+                                    updated += 1
                             except Exception as row_exc:
                                 rejected += 1
                                 if len(job_errors) < 200:
@@ -511,10 +580,8 @@ class ImportService:
                 try:
                     async with self.db.begin_nested():
                         stmt = insert(model_class).values(batch)
-                        if has_content_hash:
-                            stmt = stmt.on_conflict_do_nothing(
-                                constraint="uq_wallet_withdrawal_content_hash"
-                            )
+                        if hash_constraint:
+                            stmt = stmt.on_conflict_do_nothing(constraint=hash_constraint)
                         else:
                             stmt = stmt.on_conflict_do_nothing()
                         await self.db.execute(stmt)
@@ -526,10 +593,8 @@ class ImportService:
                         try:
                             async with self.db.begin_nested():
                                 stmt = insert(model_class).values(**row_data)
-                                if has_content_hash:
-                                    stmt = stmt.on_conflict_do_nothing(
-                                        constraint="uq_wallet_withdrawal_content_hash"
-                                    )
+                                if hash_constraint:
+                                    stmt = stmt.on_conflict_do_nothing(constraint=hash_constraint)
                                 else:
                                     stmt = stmt.on_conflict_do_nothing()
                                 await self.db.execute(stmt)
@@ -545,34 +610,6 @@ class ImportService:
                                 )
 
         return inserted, updated, truly_skipped, rejected, job_errors
-
-    async def _count_existing_keys(
-        self,
-        model_class: Any,
-        key_cols: list[str],
-        batch: list[dict],
-    ) -> int:
-        """Count how many rows in the batch already exist in the database."""
-        if not batch or not key_cols:
-            return 0
-
-        if len(key_cols) == 1:
-            key_col = key_cols[0]
-            key_values = [row[key_col] for row in batch if row.get(key_col) is not None]
-            if not key_values:
-                return 0
-            stmt = select(sa_func.count()).select_from(model_class).where(getattr(model_class, key_col).in_(key_values))
-        else:
-            conditions = []
-            for row in batch:
-                if all(row.get(col) is not None for col in key_cols):
-                    conditions.append(and_(*[getattr(model_class, col) == row[col] for col in key_cols]))
-            if not conditions:
-                return 0
-            stmt = select(sa_func.count()).select_from(model_class).where(or_(*conditions))
-
-        result = await self.db.execute(stmt)
-        return result.scalar() or 0
 
     async def _fetch_existing_rows(
         self,
@@ -632,11 +669,7 @@ class ImportService:
         hashes = [row["content_hash"] for row in batch if row.get("content_hash")]
         if not hashes:
             return 0
-        stmt = (
-            select(sa_func.count())
-            .select_from(model_class)
-            .where(model_class.content_hash.in_(hashes))
-        )
+        stmt = select(sa_func.count()).select_from(model_class).where(model_class.content_hash.in_(hashes))
         result = await self.db.execute(stmt)
         return result.scalar() or 0
 

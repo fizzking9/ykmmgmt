@@ -24,6 +24,4 @@ class WalletWithdrawal(Base):
     )
     imported_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now(), comment="导入时间")
 
-    __table_args__ = (
-        UniqueConstraint("content_hash", name="uq_wallet_withdrawal_content_hash"),
-    )
+    __table_args__ = (UniqueConstraint("content_hash", name="uq_wallet_withdrawal_content_hash"),)
