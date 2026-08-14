@@ -158,19 +158,20 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
             isDashboardsParentActive && "text-primary",
           )}
         >
-          <Link
-            to="/dashboards"
+          {/* Label toggles the group only — no navigation (看板列表 below
+              is the entry to the list page) */}
+          <div
             onClick={() => {
               onNavClick?.();
               // Toggle on label click like the other groups (the chevron
               // still toggles without navigating)
               setOpenGroups((prev) => ({ ...prev, ["数据看板"]: !dashboardsOpen }));
             }}
-            className="flex flex-1 items-center gap-2 text-left"
+            className="flex flex-1 cursor-pointer items-center gap-2 text-left"
           >
             <LayoutDashboard className="h-4 w-4" />
             <span className="flex-1">数据看板</span>
-          </Link>
+          </div>
           <CollapsibleTrigger className="shrink-0" title="展开/收起">
             <ChevronDown
               className={cn(

@@ -233,7 +233,11 @@ export default function VisualizationsListPage() {
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">可视化</h2>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/visualizations/builder")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/visualizations/builder", { state: { fresh: true } })}
+          >
             <Plus className="mr-2 h-4 w-4" />
             新建
           </Button>
@@ -318,7 +322,7 @@ export default function VisualizationsListPage() {
           <Button
             className="mt-4"
             variant="outline"
-            onClick={() => navigate("/visualizations/builder")}
+            onClick={() => navigate("/visualizations/builder", { state: { fresh: true } })}
           >
             创建可视化
           </Button>
