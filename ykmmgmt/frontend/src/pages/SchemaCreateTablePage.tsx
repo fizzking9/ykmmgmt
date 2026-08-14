@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { ArrowLeft, FileUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,7 @@ import {
   type ColumnDefinitionPayload,
 } from "@/hooks/useSchema";
 import { ForeignKeyPicker } from "@/components/schema/ForeignKeyPicker";
+import { useUploadFile } from "@/hooks/useUploadFile";
 
 const NAME_RE = /^[a-z][a-z0-9_]*$/;
 
@@ -36,9 +38,14 @@ export default function SchemaCreateTablePage() {
   const typesQuery = useColumnTypes();
   const inferMutation = useInferCsv();
   const createMutation = useCreateTable();
+  const uploadMutation = useUploadFile();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<"manual" | "csv">("manual");
+  // Source file kept after successful inference so its data can be imported
+  // into the new table right after creation.
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [importAfterCreate, setImportAfterCreate] = useState(true);
   const [tableName, setTableName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [columns, setColumns] = useState<ColumnDefinitionPayload[]>([emptyColumn()]);
@@ -77,6 +84,7 @@ export default function SchemaCreateTablePage() {
         // the Chinese labels come straight from the file headers.
         setColumns(data.columns.map((c) => ({ ...emptyColumn(), ...c })));
         setUpsertKey([]); // inferred columns replaced — reset the key choice
+        setSourceFile(file);
         if (!tableName) setTableName(data.suggested_table_name);
       },
     });
@@ -96,7 +104,8 @@ export default function SchemaCreateTablePage() {
   const nameValid = NAME_RE.test(tableName);
   const columnsValid =
     columns.length > 0 && columns.every((c) => NAME_RE.test(c.name.trim()) && c.type);
-  const canSubmit = nameValid && columnsValid && !createMutation.isPending;
+  const canSubmit =
+    nameValid && columnsValid && !createMutation.isPending && !uploadMutation.isPending;
 
   const handleSubmit = () => {
     // Drop key selections that no longer reference a defined column
@@ -122,7 +131,26 @@ export default function SchemaCreateTablePage() {
       },
       {
         onSuccess: (data) => {
-          navigate(`/schema/tables/${data.name}`);
+          // Optionally feed the inferred source file into the fresh table
+          if (importAfterCreate && sourceFile) {
+            uploadMutation.mutate(
+              { file: sourceFile, targetTable: data.name },
+              {
+                onSuccess: (result) => {
+                  toast.success(
+                    `数据导入完成：新增 ${result.rows_inserted} 行，更新 ${result.rows_updated} 行，跳过 ${result.rows_skipped} 行`,
+                  );
+                  navigate(`/schema/tables/${data.name}`);
+                },
+                onError: (err: Error) => {
+                  toast.error(`数据表已创建，但数据导入失败：${err.message}`);
+                  navigate(`/schema/tables/${data.name}`);
+                },
+              },
+            );
+          } else {
+            navigate(`/schema/tables/${data.name}`);
+          }
         },
       },
     );
@@ -197,7 +225,7 @@ export default function SchemaCreateTablePage() {
               )}
               onClick={() => setMode("csv")}
             >
-              CSV 导入推断
+              CSV 导入
             </button>
           </div>
         </CardHeader>
@@ -230,6 +258,17 @@ export default function SchemaCreateTablePage() {
                   已推断 {inferMutation.data.columns.length} 列（源文件约{" "}
                   {inferMutation.data.row_count} 行数据）
                 </p>
+              )}
+              {sourceFile && (
+                <label className="mt-2 flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    aria-label="创建后导入数据"
+                    checked={importAfterCreate}
+                    onChange={(e) => setImportAfterCreate(e.target.checked)}
+                  />
+                  创建后导入该文件数据到此表（{sourceFile.name}）
+                </label>
               )}
             </div>
           )}
@@ -353,7 +392,11 @@ export default function SchemaCreateTablePage() {
               添加列
             </Button>
             <Button onClick={handleSubmit} disabled={!canSubmit}>
-              {createMutation.isPending ? "创建中…" : "创建数据表"}
+              {createMutation.isPending || uploadMutation.isPending
+                ? uploadMutation.isPending
+                  ? "导入数据中…"
+                  : "创建中…"
+                : "创建数据表"}
             </Button>
           </div>
         </CardContent>

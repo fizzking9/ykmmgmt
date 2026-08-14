@@ -64,6 +64,7 @@ const INFERRED = {
 
 const createMutateMock = vi.fn();
 const inferMutateMock = vi.fn();
+const uploadMutateMock = vi.fn();
 const addColumnMutateMock = vi.fn();
 const deleteMutateMock = vi.fn();
 const modifyMutateMock = vi.fn();
@@ -139,6 +140,10 @@ vi.mock("@/hooks/useSchema", async () => {
     useDeleteTable: () => ({ mutate: deleteMutateMock, isPending: false }),
   };
 });
+
+vi.mock("@/hooks/useUploadFile", () => ({
+  useUploadFile: () => ({ mutate: uploadMutateMock, isPending: false }),
+}));
 
 // Mock sonner toasts
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
@@ -268,7 +273,7 @@ describe("新建数据表（CSV 推断）", () => {
     renderWithProviders(<SchemaCreateTablePage />, "/schema/create");
 
     // Switch to CSV mode
-    fireEvent.click(screen.getByRole("button", { name: "CSV 导入推断" }));
+    fireEvent.click(screen.getByRole("button", { name: "CSV 导入" }));
 
     // Build a real File from CSV text with Chinese headers
     const csv = "订单号,金额,下单日期\nA001,199.50,2026-08-01\nA002,250.00,2026-08-02\n";
@@ -296,6 +301,65 @@ describe("新建数据表（CSV 推断）", () => {
     expect(screen.getByLabelText("第3列中文标签")).toHaveValue("下单日期");
     // Suggested table name applied
     expect(screen.getByLabelText(/英文表名/)).toHaveValue("orders");
+  });
+
+  it("创建后自动导入源文件数据到新表", async () => {
+    inferMutateMock.mockImplementation(
+      (_file: File, opts: { onSuccess?: (d: unknown) => void }) => {
+        opts.onSuccess?.(INFERRED);
+      },
+    );
+    createMutateMock.mockImplementation(
+      (_payload: unknown, opts: { onSuccess?: (d: unknown) => void }) => {
+        opts.onSuccess?.({ name: "orders" });
+      },
+    );
+
+    renderWithProviders(<SchemaCreateTablePage />, "/schema/create");
+    fireEvent.click(screen.getByRole("button", { name: "CSV 导入" }));
+
+    const csv = "订单号,金额,下单日期\nA001,199.50,2026-08-01\n";
+    const file = new File([csv], "orders.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByLabelText("选择CSV文件"), { target: { files: [file] } });
+
+    // The import-after-create option appears checked by default
+    await waitFor(() => {
+      expect(screen.getByLabelText("创建后导入数据")).toBeChecked();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /创建数据表/ }));
+
+    // Table created first, then the same file is uploaded into it
+    expect(createMutateMock).toHaveBeenCalledTimes(1);
+    expect(uploadMutateMock).toHaveBeenCalledTimes(1);
+    const uploadArg = uploadMutateMock.mock.calls[0][0];
+    expect(uploadArg.targetTable).toBe("orders");
+    expect(uploadArg.file.name).toBe("orders.csv");
+  });
+
+  it("取消勾选后创建表不导入数据", async () => {
+    inferMutateMock.mockImplementation(
+      (_file: File, opts: { onSuccess?: (d: unknown) => void }) => {
+        opts.onSuccess?.(INFERRED);
+      },
+    );
+
+    renderWithProviders(<SchemaCreateTablePage />, "/schema/create");
+    fireEvent.click(screen.getByRole("button", { name: "CSV 导入" }));
+
+    const csv = "订单号,金额,下单日期\nA001,199.50,2026-08-01\n";
+    const file = new File([csv], "orders.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByLabelText("选择CSV文件"), { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("创建后导入数据")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText("创建后导入数据"));
+
+    fireEvent.click(screen.getByRole("button", { name: /创建数据表/ }));
+
+    expect(createMutateMock).toHaveBeenCalledTimes(1);
+    expect(uploadMutateMock).not.toHaveBeenCalled();
   });
 });
 
