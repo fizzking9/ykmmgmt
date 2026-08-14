@@ -11,9 +11,7 @@ from app.core.database import Base
 class View(Base):
     __tablename__ = "views"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="主键ID"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="主键ID")
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, comment="视图名称")
     description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="视图描述")
     config_json: Mapped[dict] = mapped_column(JSONB, nullable=False, comment="视图配置（JSON）")

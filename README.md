@@ -161,6 +161,26 @@ curl http://localhost:8000/api/imports/tables
 
 Returns English table names and their Chinese labels.
 
+## Schema Manager（数据库管理）
+
+Manage the database schema directly in the app — no hand-written models or migrations.
+
+- **Inspect** every table (`/schema`): columns, types, Chinese labels, descriptions, default values, sample rows.
+- **Create tables** manually or by uploading a CSV — column types and Chinese labels are inferred for review before creation. Columns support primary keys, foreign keys (picked via table/column dropdowns), descriptions, and default values. New tables no longer carry the `content_hash` bookkeeping column.
+- **Edit tables**: add/drop columns, and per column change its name, Chinese label, type, nullability, unique constraint, description, default value, and foreign key (with data-loss warnings).
+- **Delete tables** with a dependency warning for views/visualizations that reference them.
+- **Imports match headers two ways**: a file header equal to a column's 中文标签 *or* its real column name maps to that column, so both Chinese-labeled files and production-style Chinese column names work.
+- Every change **generates and applies an Alembic migration automatically**, and new tables appear in the Data Browser / View Builder immediately — no server restart.
+- Runtime-generated migrations are written to `ykmmgmt/runtime_migrations/` (outside the backend tree) so `uvicorn --reload` never restarts mid-request; both version directories are wired up in `alembic.ini`.
+- The three pre-existing business tables (`refund_orders`, `service_refund_work_orders`, `wallet_withdrawals`) are **inspection-only** and protected from edits.
+
+```bash
+curl http://localhost:8000/api/schema/tables          # all tables + read-only flags
+curl http://localhost:8000/api/schema/column-types    # supported column types
+curl http://localhost:8000/api/schema/fk-options      # FK targets (tables + PK/unique columns)
+curl -X POST http://localhost:8000/api/schema/infer-from-csv -F "file=@sample.csv"
+```
+
 ## Project Structure
 
 ```

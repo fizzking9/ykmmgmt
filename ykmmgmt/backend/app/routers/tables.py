@@ -76,10 +76,7 @@ async def list_tables():
 
     Excludes internal tables (datasources, import_jobs, alembic_version).
     """
-    return [
-        TableInfo(name=name, chinese_name=chinese_name)
-        for name, chinese_name in TABLE_DISPLAY_NAMES.items()
-    ]
+    return [TableInfo(name=name, chinese_name=chinese_name) for name, chinese_name in TABLE_DISPLAY_NAMES.items()]
 
 
 @router.get("/tables/{name}/schema", response_model=list[ColumnInfo])

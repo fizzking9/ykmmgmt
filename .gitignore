@@ -35,3 +35,7 @@ Thumbs.db
 
 # Debug/export scratch artifacts
 tmp_export/
+
+# Runtime-generated schema migrations (created by the Schema Manager at
+# runtime; dynamic tables are restored from DB reflection on startup)
+ykmmgmt/runtime_migrations/

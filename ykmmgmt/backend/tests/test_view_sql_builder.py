@@ -62,6 +62,7 @@ REFUND_SERVICE_COLS = {
 # datetime_trunc
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def test_datetime_trunc_year():
     """DATE_TRUNC('year', col) is generated for year-level truncation."""
     config = ViewConfig(
@@ -70,9 +71,7 @@ def test_datetime_trunc_year():
             ComputedColumnSpec(
                 alias="order_year",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(
-                    type="column", table="refund_orders", column="created_at"
-                ),
+                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
                 trunc_unit="year",
             )
         ],
@@ -91,9 +90,7 @@ def test_datetime_trunc_month():
             ComputedColumnSpec(
                 alias="order_month",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(
-                    type="column", table="refund_orders", column="created_at"
-                ),
+                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
                 trunc_unit="month",
             )
         ],
@@ -112,9 +109,7 @@ def test_datetime_trunc_day():
             ComputedColumnSpec(
                 alias="order_day",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(
-                    type="column", table="refund_orders", column="created_at"
-                ),
+                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
                 trunc_unit="day",
             )
         ],
@@ -151,9 +146,7 @@ def test_datetime_trunc_missing_unit_raises():
             ComputedColumnSpec(
                 alias="bad",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(
-                    type="column", table="refund_orders", column="created_at"
-                ),
+                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
             )
         ],
     )
@@ -164,6 +157,7 @@ def test_datetime_trunc_missing_unit_raises():
 # ═══════════════════════════════════════════════════════════════════════════
 # Date range filters
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def test_date_range_both_start_and_end():
     """Both date_start and date_end produce a combined WHERE clause."""
@@ -261,6 +255,7 @@ def test_date_range_combined_with_operator_filter():
 # ORDER BY
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def test_order_by_single_column():
     config = ViewConfig(
         from_tables=["refund_orders"],
@@ -326,9 +321,7 @@ def test_order_by_computed_column():
             ComputedColumnSpec(
                 alias="order_year",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(
-                    type="column", table="refund_orders", column="created_at"
-                ),
+                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
                 trunc_unit="year",
             )
         ],
@@ -358,6 +351,7 @@ def test_limit_not_in_generated_sql():
 # Integration: all features together
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def test_full_pipeline_join_filter_order_limit():
     """All new features work together in a realistic query."""
     config = ViewConfig(
@@ -372,9 +366,7 @@ def test_full_pipeline_join_filter_order_limit():
             )
         ],
         columns=[
-            ColumnSpec(
-                table="refund_orders", column="refund_order_no", alias="退费单号"
-            ),
+            ColumnSpec(table="refund_orders", column="refund_order_no", alias="退费单号"),
             ColumnSpec(table="refund_orders", column="status", alias="状态"),
         ],
         filters=[
@@ -393,9 +385,7 @@ def test_full_pipeline_join_filter_order_limit():
             ComputedColumnSpec(
                 alias="order_month",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(
-                    type="column", table="refund_orders", column="created_at"
-                ),
+                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
                 trunc_unit="month",
             )
         ],
@@ -530,9 +520,7 @@ async def test_get_view_data_with_params_integration():
                 f"/api/views/{view_id}/data",
                 params={"page": 1, "size": 10},
             )
-            assert data_resp.status_code == 200, (
-                f"get_view_data failed (bind param bug?): {data_resp.text}"
-            )
+            assert data_resp.status_code == 200, f"get_view_data failed (bind param bug?): {data_resp.text}"
             data = data_resp.json()
             assert "rows" in data
             assert "total" in data
@@ -598,9 +586,7 @@ async def test_get_view_data_with_operator_filter_integration():
                 f"/api/views/{view_id}/data",
                 params={"page": 1, "size": 10},
             )
-            assert data_resp.status_code == 200, (
-                f"get_view_data failed (bind param bug?): {data_resp.text}"
-            )
+            assert data_resp.status_code == 200, f"get_view_data failed (bind param bug?): {data_resp.text}"
             data = data_resp.json()
             assert "rows" in data
             assert "total" in data
@@ -657,9 +643,7 @@ async def test_get_view_data_limit_caps_total_and_pages():
             )
             assert data_resp.status_code == 200, f"Page 1 failed: {data_resp.text}"
             page1 = data_resp.json()
-            assert page1["total"] <= 5, (
-                f"total ({page1['total']}) must be capped at 5"
-            )
+            assert page1["total"] <= 5, f"total ({page1['total']}) must be capped at 5"
             assert len(page1["rows"]) <= 3
             assert page1["page"] == 1
 
@@ -677,11 +661,11 @@ async def test_get_view_data_limit_caps_total_and_pages():
             # 4. Verify total and size are consistent:
             #    totalPages = ceil(total / size)
             import math
+
             expected_pages = max(1, math.ceil(page1["total"] / page1["size"]))
             # With total=5, size=3: pages = ceil(5/3) = 2
             assert expected_pages == 2, (
-                f"Expected 2 pages for total={page1['total']} size={page1['size']}, "
-                f"got {expected_pages}"
+                f"Expected 2 pages for total={page1['total']} size={page1['size']}, got {expected_pages}"
             )
         finally:
             await client.delete(f"/api/views/{view_id}")

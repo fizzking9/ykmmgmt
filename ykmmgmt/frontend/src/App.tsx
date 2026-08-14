@@ -14,6 +14,9 @@ import VisualizationViewPage from "@/pages/VisualizationViewPage";
 import DashboardBuilderPage from "@/pages/DashboardBuilderPage";
 import DashboardDisplayPage from "@/pages/DashboardDisplayPage";
 import DashboardsListPage from "@/pages/DashboardsListPage";
+import SchemaTablesPage from "@/pages/SchemaTablesPage";
+import SchemaCreateTablePage from "@/pages/SchemaCreateTablePage";
+import SchemaTableDetailPage from "@/pages/SchemaTableDetailPage";
 
 export default function App() {
   return (
@@ -34,6 +37,9 @@ export default function App() {
           <Route path="/dashboards/builder/:id?" element={<DashboardBuilderPage />} />
           <Route path="/dashboards" element={<DashboardsListPage />} />
           <Route path="/dashboards/:id" element={<DashboardDisplayPage />} />
+          <Route path="/schema" element={<SchemaTablesPage />} />
+          <Route path="/schema/create" element={<SchemaCreateTablePage />} />
+          <Route path="/schema/tables/:name" element={<SchemaTableDetailPage />} />
         </Route>
       </Routes>
     </>

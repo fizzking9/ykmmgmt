@@ -23,9 +23,7 @@ async def test_filter_with_start_date_only():
         assert data["total"] == 0
 
         # Without datetime_col, returns unfiltered data
-        response = await client.get(
-            "/api/tables/refund_orders/data", params={"size": 10}
-        )
+        response = await client.get("/api/tables/refund_orders/data", params={"size": 10})
         assert response.status_code == 200
         data = response.json()
         assert "rows" in data
