@@ -1,4 +1,8 @@
-"""Tests for Visualization CRUD API — /api/visualizations endpoints."""
+"""Tests for Visualization CRUD API — /api/visualizations endpoints.
+
+Views are built against a dynamically created fixture table (Schema
+Manager API), since the system ships with no built-in business tables.
+"""
 
 import uuid
 
@@ -6,6 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
+from tests.conftest import ensure_shared_table
 
 pytestmark = pytest.mark.usefixtures("_dispose_engine_after_test")
 
@@ -15,12 +20,12 @@ def _unique_name(prefix: str = "测试视图") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
-async def _create_view(client: AsyncClient) -> str:
+async def _create_view(client: AsyncClient, table: str) -> str:
     """Helper: create a view with a unique name and return its ID."""
     view_config = {
-        "from_tables": ["refund_orders"],
+        "from_tables": [table],
         "joins": [],
-        "columns": [{"table": "refund_orders", "column": "id", "alias": None}],
+        "columns": [{"table": table, "column": "order_no", "alias": None}],
         "computed_columns": [],
         "selected_computed_columns": [],
         "filters": [],
@@ -43,17 +48,23 @@ async def _cleanup(client: AsyncClient, view_id: str, viz_ids: list[str] | None 
     await client.delete(f"/api/views/{view_id}")
 
 
+async def _setup(client: AsyncClient, shared_dynamic_table) -> str:
+    """Ensure the module fixture table exists and return its name."""
+    return await ensure_shared_table(client, shared_dynamic_table)
+
+
 @pytest.mark.asyncio
-async def test_create_visualization_success():
+async def test_create_visualization_success(shared_dynamic_table):
     """POST /api/visualizations creates a visualization with valid data."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         payload = {
             "name": "测试图表",
             "view_id": view_id,
             "chart_type": "bar",
-            "config_json": {"x_column": "id", "y_columns": ["id"]},
+            "config_json": {"x_column": "order_no", "y_columns": ["amount"]},
         }
         resp = await client.post("/api/visualizations", json=payload)
         assert resp.status_code == 201
@@ -69,17 +80,18 @@ async def test_create_visualization_success():
 
 
 @pytest.mark.asyncio
-async def test_create_visualization_duplicate_name_conflict():
+async def test_create_visualization_duplicate_name_conflict(shared_dynamic_table):
     """POST /api/visualizations returns 409 when the name already exists."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         name = _unique_name("重复图表")
         payload = {
             "name": name,
             "view_id": view_id,
             "chart_type": "bar",
-            "config_json": {"x_column": "id", "y_columns": ["id"]},
+            "config_json": {"x_column": "order_no", "y_columns": ["amount"]},
         }
         resp = await client.post("/api/visualizations", json=payload)
         assert resp.status_code == 201
@@ -94,16 +106,17 @@ async def test_create_visualization_duplicate_name_conflict():
 
 
 @pytest.mark.asyncio
-async def test_create_visualization_histogram():
+async def test_create_visualization_histogram(shared_dynamic_table):
     """POST /api/visualizations accepts the histogram chart type."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         payload = {
             "name": "直方图",
             "view_id": view_id,
             "chart_type": "histogram",
-            "config_json": {"columns": ["id"], "bins": 20},
+            "config_json": {"columns": ["amount"], "bins": 20},
         }
         resp = await client.post("/api/visualizations", json=payload)
         assert resp.status_code == 201
@@ -113,16 +126,17 @@ async def test_create_visualization_histogram():
 
 
 @pytest.mark.asyncio
-async def test_create_visualization_boxplot():
+async def test_create_visualization_boxplot(shared_dynamic_table):
     """POST /api/visualizations accepts the boxplot chart type."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         payload = {
             "name": "箱线图",
             "view_id": view_id,
             "chart_type": "boxplot",
-            "config_json": {"category_column": "", "value_column": "id"},
+            "config_json": {"category_column": "", "value_column": "amount"},
         }
         resp = await client.post("/api/visualizations", json=payload)
         assert resp.status_code == 201
@@ -132,16 +146,17 @@ async def test_create_visualization_boxplot():
 
 
 @pytest.mark.asyncio
-async def test_create_visualization_histogram_missing_bins():
+async def test_create_visualization_histogram_missing_bins(shared_dynamic_table):
     """POST /api/visualizations rejects histogram config missing the bins key."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         payload = {
             "name": "直方图",
             "view_id": view_id,
             "chart_type": "histogram",
-            "config_json": {"columns": ["id"]},  # missing bins
+            "config_json": {"columns": ["amount"]},  # missing bins
         }
         resp = await client.post("/api/visualizations", json=payload)
         assert resp.status_code == 422
@@ -150,11 +165,12 @@ async def test_create_visualization_histogram_missing_bins():
 
 
 @pytest.mark.asyncio
-async def test_create_visualization_invalid_chart_type():
+async def test_create_visualization_invalid_chart_type(shared_dynamic_table):
     """POST /api/visualizations rejects invalid chart_type."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         payload = {
             "name": "测试",
             "view_id": view_id,
@@ -185,11 +201,12 @@ async def test_create_visualization_invalid_view_id():
 
 
 @pytest.mark.asyncio
-async def test_create_visualization_missing_config_keys():
+async def test_create_visualization_missing_config_keys(shared_dynamic_table):
     """POST /api/visualizations rejects missing required config keys."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         payload = {
             "name": "测试",
             "view_id": view_id,
@@ -204,11 +221,12 @@ async def test_create_visualization_missing_config_keys():
 
 
 @pytest.mark.asyncio
-async def test_update_visualization_success():
+async def test_update_visualization_success(shared_dynamic_table):
     """PUT /api/visualizations/{id} updates an existing visualization."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         # Create
         resp = await client.post(
             "/api/visualizations",
@@ -216,7 +234,7 @@ async def test_update_visualization_success():
                 "name": "原始名称",
                 "view_id": view_id,
                 "chart_type": "table",
-                "config_json": {"visible_columns": ["id"]},
+                "config_json": {"visible_columns": ["order_no"]},
             },
         )
         assert resp.status_code == 201
@@ -268,18 +286,19 @@ async def test_list_visualizations():
 
 
 @pytest.mark.asyncio
-async def test_get_visualization_detail():
+async def test_get_visualization_detail(shared_dynamic_table):
     """GET /api/visualizations/{id} returns full detail."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         resp = await client.post(
             "/api/visualizations",
             json={
                 "name": "详情测试",
                 "view_id": view_id,
                 "chart_type": "kpi_card",
-                "config_json": {"value_column": "id", "label": "总数"},
+                "config_json": {"value_column": "amount", "label": "总数"},
             },
         )
         assert resp.status_code == 201
@@ -289,25 +308,26 @@ async def test_get_visualization_detail():
         assert resp.status_code == 200
         data = resp.json()
         assert data["name"] == "详情测试"
-        assert data["config_json"]["value_column"] == "id"
+        assert data["config_json"]["value_column"] == "amount"
         assert data["config_json"]["label"] == "总数"
 
         await _cleanup(client, view_id, [viz_id])
 
 
 @pytest.mark.asyncio
-async def test_delete_visualization():
+async def test_delete_visualization(shared_dynamic_table):
     """DELETE /api/visualizations/{id} removes the visualization."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         resp = await client.post(
             "/api/visualizations",
             json={
                 "name": "待删除",
                 "view_id": view_id,
                 "chart_type": "pie",
-                "config_json": {"label_column": "id", "value_column": "id"},
+                "config_json": {"label_column": "order_no", "value_column": "amount"},
             },
         )
         assert resp.status_code == 201
@@ -324,18 +344,19 @@ async def test_delete_visualization():
 
 
 @pytest.mark.asyncio
-async def test_get_visualization_data():
+async def test_get_visualization_data(shared_dynamic_table):
     """GET /api/visualizations/{id}/data returns rows from the view's SQL."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         resp = await client.post(
             "/api/visualizations",
             json={
                 "name": "数据测试",
                 "view_id": view_id,
                 "chart_type": "table",
-                "config_json": {"visible_columns": ["id"]},
+                "config_json": {"visible_columns": ["order_no"]},
             },
         )
         assert resp.status_code == 201
@@ -356,7 +377,7 @@ async def test_get_visualization_data():
 
 
 @pytest.mark.asyncio
-async def test_get_visualization_data_with_filtered_view():
+async def test_get_visualization_data_with_filtered_view(shared_dynamic_table):
     """Data endpoint works for views whose SQL has bind parameters.
 
     Regression test: the endpoint used to execute the stored generated_sql
@@ -366,17 +387,18 @@ async def test_get_visualization_data_with_filtered_view():
     """
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await _setup(client, shared_dynamic_table)
         view_config = {
-            "from_tables": ["refund_orders"],
+            "from_tables": [table],
             "joins": [],
             "columns": [
-                {"table": "refund_orders", "column": "refund_amount", "alias": None},
+                {"table": table, "column": "amount", "alias": None},
             ],
             "computed_columns": [],
             "selected_computed_columns": [],
             "filters": [
                 {
-                    "column": "refund_orders.record_created_at",
+                    "column": f"{table}.record_time",
                     "date_start": "2026-01-01",
                     "date_end": "2026-12-31",
                 }
@@ -397,7 +419,7 @@ async def test_get_visualization_data_with_filtered_view():
                 "name": _unique_name("测试可视化"),
                 "view_id": view_id,
                 "chart_type": "histogram",
-                "config_json": {"columns": ["refund_amount"], "bins": 10},
+                "config_json": {"columns": ["amount"], "bins": 10},
             },
         )
         assert resp.status_code == 201
@@ -406,7 +428,7 @@ async def test_get_visualization_data_with_filtered_view():
         resp = await client.get(f"/api/visualizations/{viz_id}/data")
         assert resp.status_code == 200
         data = resp.json()
-        assert "refund_amount" in data["columns"]
+        assert "amount" in data["columns"]
         assert isinstance(data["rows"], list)
 
         await _cleanup(client, view_id, [viz_id])
@@ -425,14 +447,14 @@ async def test_get_visualization_data_not_found():
 # ── Time-Profile (start/end/granularity/agg) tests ────────────────────────
 
 
-async def _create_time_view(client: AsyncClient) -> str:
+async def _create_time_view(client: AsyncClient, table: str) -> str:
     """Helper: create a view exposing a datetime column + a numeric column."""
     view_config = {
-        "from_tables": ["refund_orders"],
+        "from_tables": [table],
         "joins": [],
         "columns": [
-            {"table": "refund_orders", "column": "record_created_at", "alias": None},
-            {"table": "refund_orders", "column": "refund_amount", "alias": None},
+            {"table": table, "column": "record_time", "alias": None},
+            {"table": table, "column": "amount", "alias": None},
         ],
         "computed_columns": [],
         "selected_computed_columns": [],
@@ -450,9 +472,9 @@ async def _create_time_view(client: AsyncClient) -> str:
 
 async def _create_time_viz(client: AsyncClient, view_id: str, *, with_date_column: bool) -> str:
     """Helper: create a line viz, optionally with a date_column time profile."""
-    config = {"x_column": "record_created_at", "y_columns": ["refund_amount"]}
+    config = {"x_column": "record_time", "y_columns": ["amount"]}
     if with_date_column:
-        config["date_column"] = "record_created_at"
+        config["date_column"] = "record_time"
         config["default_granularity"] = "day"
         config["default_agg"] = "SUM"
     resp = await client.post(
@@ -469,11 +491,12 @@ async def _create_time_viz(client: AsyncClient, view_id: str, *, with_date_colum
 
 
 @pytest.mark.asyncio
-async def test_data_time_filter_narrows_rows():
+async def test_data_time_filter_narrows_rows(shared_dynamic_table):
     """start/end params narrow rows to the given date range."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_time_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_time_view(client, table)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
         base = await client.get(f"/api/visualizations/{viz_id}/data")
@@ -488,18 +511,19 @@ async def test_data_time_filter_narrows_rows():
         rows = filtered.json()["rows"]
         assert len(rows) <= len(base_rows)
         for row in rows:
-            date_part = row["record_created_at"][:10]
+            date_part = row["record_time"][:10]
             assert "2026-06-01" <= date_part <= "2026-06-30"
 
         await _cleanup(client, view_id, [viz_id])
 
 
 @pytest.mark.asyncio
-async def test_data_granularity_rebuckets_monthly():
+async def test_data_granularity_rebuckets_monthly(shared_dynamic_table):
     """granularity=month re-buckets daily rows into monthly SUM buckets."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_time_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_time_view(client, table)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
         base = await client.get(f"/api/visualizations/{viz_id}/data")
@@ -514,27 +538,26 @@ async def test_data_granularity_rebuckets_monthly():
         assert len(rows) <= len(base_rows)
         # Every bucket starts on the 1st of a month
         for row in rows:
-            assert row["record_created_at"][:10].endswith("-01")
+            assert row["record_time"][:10].endswith("-01")
         # Monthly sums preserve the overall total (NULL-date rows excluded)
         base_total = sum(
-            float(r["refund_amount"])
-            for r in base_rows
-            if r["refund_amount"] is not None and r["record_created_at"] is not None
+            float(r["amount"]) for r in base_rows if r["amount"] is not None and r["record_time"] is not None
         )
-        monthly_total = sum(float(r["refund_amount"]) for r in rows if r["refund_amount"] is not None)
+        monthly_total = sum(float(r["amount"]) for r in rows if r["amount"] is not None)
         assert abs(base_total - monthly_total) < 0.01
 
         await _cleanup(client, view_id, [viz_id])
 
 
 @pytest.mark.asyncio
-async def test_data_granularity_week_buckets_start_monday():
+async def test_data_granularity_week_buckets_start_monday(shared_dynamic_table):
     """granularity=week buckets start on Mondays and preserve totals."""
     import datetime as dt
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_time_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_time_view(client, table)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
         base = await client.get(f"/api/visualizations/{viz_id}/data")
@@ -548,25 +571,24 @@ async def test_data_granularity_week_buckets_start_monday():
         rows = weekly.json()["rows"]
         assert len(rows) <= len(base_rows)
         for row in rows:
-            bucket_date = dt.date.fromisoformat(row["record_created_at"][:10])
+            bucket_date = dt.date.fromisoformat(row["record_time"][:10])
             assert bucket_date.weekday() == 0  # Monday
         base_total = sum(
-            float(r["refund_amount"])
-            for r in base_rows
-            if r["refund_amount"] is not None and r["record_created_at"] is not None
+            float(r["amount"]) for r in base_rows if r["amount"] is not None and r["record_time"] is not None
         )
-        weekly_total = sum(float(r["refund_amount"]) for r in rows if r["refund_amount"] is not None)
+        weekly_total = sum(float(r["amount"]) for r in rows if r["amount"] is not None)
         assert abs(base_total - weekly_total) < 0.01
 
         await _cleanup(client, view_id, [viz_id])
 
 
 @pytest.mark.asyncio
-async def test_data_time_params_ignored_without_date_column():
+async def test_data_time_params_ignored_without_date_column(shared_dynamic_table):
     """Time params are ignored when the viz has no date_column profile."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_time_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_time_view(client, table)
         viz_id = await _create_time_viz(client, view_id, with_date_column=False)
 
         plain = await client.get(f"/api/visualizations/{viz_id}/data")
@@ -587,11 +609,12 @@ async def test_data_time_params_ignored_without_date_column():
 
 
 @pytest.mark.asyncio
-async def test_data_invalid_granularity_rejected():
+async def test_data_invalid_granularity_rejected(shared_dynamic_table):
     """Invalid granularity is rejected with 422."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_time_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_time_view(client, table)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
         resp = await client.get(f"/api/visualizations/{viz_id}/data", params={"granularity": "hour"})
@@ -601,11 +624,12 @@ async def test_data_invalid_granularity_rejected():
 
 
 @pytest.mark.asyncio
-async def test_data_invalid_agg_rejected():
+async def test_data_invalid_agg_rejected(shared_dynamic_table):
     """Invalid agg function is rejected with 422."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_time_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_time_view(client, table)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
         resp = await client.get(
@@ -618,11 +642,12 @@ async def test_data_invalid_agg_rejected():
 
 
 @pytest.mark.asyncio
-async def test_data_invalid_start_date_rejected():
+async def test_data_invalid_start_date_rejected(shared_dynamic_table):
     """Malformed start date is rejected with 422 and a Chinese message."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_time_view(client)
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_time_view(client, table)
         viz_id = await _create_time_viz(client, view_id, with_date_column=True)
 
         resp = await client.get(f"/api/visualizations/{viz_id}/data", params={"start": "not-a-date"})

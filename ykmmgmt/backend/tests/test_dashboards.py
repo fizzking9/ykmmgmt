@@ -1,4 +1,8 @@
-"""Tests for Dashboard CRUD API — /api/dashboards endpoints."""
+"""Tests for Dashboard CRUD API — /api/dashboards endpoints.
+
+Views are built against a dynamically created fixture table (Schema
+Manager API), since the system ships with no built-in business tables.
+"""
 
 import uuid
 
@@ -6,6 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
+from tests.conftest import ensure_shared_table
 
 pytestmark = pytest.mark.usefixtures("_dispose_engine_after_test")
 
@@ -15,14 +20,14 @@ def _unique_name(prefix: str = "测试仪表盘") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
-async def _create_view(client: AsyncClient) -> str:
+async def _create_view(client: AsyncClient, table: str) -> str:
     """Helper: create a view with a unique name and return its ID."""
     view_config = {
-        "from_tables": ["refund_orders"],
+        "from_tables": [table],
         "joins": [],
         "columns": [
-            {"table": "refund_orders", "column": "id", "alias": None},
-            {"table": "refund_orders", "column": "refund_amount", "alias": None},
+            {"table": table, "column": "order_no", "alias": None},
+            {"table": table, "column": "amount", "alias": None},
         ],
         "computed_columns": [],
         "selected_computed_columns": [],
@@ -46,7 +51,7 @@ async def _create_viz(client: AsyncClient, view_id: str) -> str:
             "name": _unique_name("测试可视化"),
             "view_id": view_id,
             "chart_type": "bar",
-            "config_json": {"x_column": "id", "y_columns": ["refund_amount"]},
+            "config_json": {"x_column": "order_no", "y_columns": ["amount"]},
         },
     )
     assert resp.status_code == 201
@@ -71,8 +76,8 @@ def _kpi_tile(view_id: str, i: str = "tile-kpi-1") -> dict:
         "h": 2,
         "config": {
             "view_id": view_id,
-            "value_column": "refund_amount",
-            "label": "退款总额",
+            "value_column": "amount",
+            "label": "金额总额",
             "agg": "SUM",
         },
     }
@@ -94,11 +99,12 @@ async def _cleanup(
 
 
 @pytest.mark.asyncio
-async def test_create_dashboard_success():
+async def test_create_dashboard_success(shared_dynamic_table):
     """POST /api/dashboards creates a dashboard with all three tile types."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await ensure_shared_table(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         viz_id = await _create_viz(client, view_id)
         name = _unique_name()
         payload = {
@@ -326,11 +332,12 @@ async def test_delete_dashboard_not_found():
 
 
 @pytest.mark.asyncio
-async def test_layout_round_trip_fidelity():
+async def test_layout_round_trip_fidelity(shared_dynamic_table):
     """Layout tiles round-trip exactly through create/get, incl. extra fields."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await ensure_shared_table(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         viz_id = await _create_viz(client, view_id)
         tiles = [
             {**_text_tile(), "static": False},

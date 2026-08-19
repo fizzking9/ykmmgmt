@@ -228,7 +228,59 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 11 — Platform Data Scraping
+## Phase 11 — Legacy Business Table Removal & System Reset
+
+**Goal:** Remove the three hardcoded legacy business tables (退费单, 服务退款工单, 钱包提现操作) and all table-specific cleansing pipelines, resetting the system to a fully generic state where all business tables are created dynamically via Schema Manager.
+
+> The general architecture must not break: users create a table schema via Schema Manager, data comes from a data source, goes through a data cleansing pipeline (table-specific if available + general), then lands in the database. The only difference is that no preset tables or hardcoded rules ship with the system.
+
+### Database Cleanup
+
+- [x] Generate Alembic migration: drop `refund_orders`, `service_refund_work_orders`, `wallet_withdrawals` tables
+- [x] Cascade-delete all dependent objects: saved views, visualizations, and dashboards that reference any of the three tables (scan `generated_sql` and `config_json` for table name matches; delete matching rows from `views`, `visualizations`, `dashboards`)
+- [x] Delete related `ImportJob` and `DataSource` records tied to the three tables
+- [x] Verify no orphaned `column_meta` or `table_meta` rows remain for the dropped tables
+
+### Code Cleanup — Models & Registry
+
+- [x] Delete `app/models/refund_order.py`, `app/models/service_refund_work_order.py`, `app/models/wallet_withdrawal.py`
+- [x] Remove the three model imports from `app/models/__init__.py`
+- [x] Remove `READ_ONLY_TABLES` frozenset from `app/services/schema_manager.py` (no longer needed — all tables are dynamic)
+- [x] Remove the three hardcoded entries from `TABLE_DISPLAY_NAMES` in `app/services/schema_validator.py`
+- [x] Remove `READ_ONLY_TABLES` guard from `app/routers/schema.py::_get_editable_model()`
+
+### Code Cleanup — Table-Specific Cleansing Rules
+
+- [x] Delete `app/services/table_specific/refund_order.py`
+- [x] Delete `app/services/table_specific/service_refund.py`
+- [x] Delete `app/services/table_specific/wallet_withdrawal.py`
+- [x] Verify `table_specific/__init__.py` registry still works correctly (empty registry = no table-specific rules for any table)
+
+### Seed Script & Sample Data
+
+- [x] Delete `seed.py` entirely
+- [x] Remove or archive the three legacy CSV sample files (`服务退款工单0601~0721.csv`, `退费单0601~0721.csv`, `钱包提现操作0601~0721.csv`) from the project root
+
+### Test Updates
+
+- [x] Update `tests/test_views.py` — replace `refund_orders` references with a dynamically created test table
+- [x] Update `tests/test_visualizations.py` — same replacement
+- [x] Update `tests/test_view_sql_builder.py` — same replacement
+- [x] Update `tests/test_imports.py` — remove legacy-table-specific import tests, keep generic pipeline tests
+- [x] Update `frontend/src/test/SchemaManager.test.tsx` — remove `退费单` / `read_only` assertions tied to legacy tables
+- [x] Add new test: verify that a fresh database starts with zero business tables and the Schema Manager table list is empty
+
+### Validation
+
+- [x] Fresh database: `alembic upgrade head` creates only system tables (`datasources`, `import_jobs`, `views`, `visualizations`, `dashboards`, `column_meta`, `table_meta`, `alembic_version`)
+- [x] Schema Manager UI shows zero tables on first launch
+- [x] Create a new table via Schema Manager → upload CSV → data flows through general cleaning pipeline → lands in DB correctly
+- [x] Data Browser, View Builder, Visualization Builder, Dashboard Builder all work with dynamically created tables
+- [x] No import errors or registry warnings on backend startup
+
+---
+
+## Phase 12 — Platform Data Scraping
 
 **Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
 
@@ -243,7 +295,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 12 — Auth & Multi-User
+## Phase 13 — Auth & Multi-User
 
 **Goal:** Only authorized team members can access the dashboard.
 
@@ -254,7 +306,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 13 — Polish & Deploy
+## Phase 14 — Polish & Deploy
 
 **Goal:** Production-ready.
 

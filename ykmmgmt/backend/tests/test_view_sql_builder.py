@@ -19,6 +19,7 @@ def _make_builder(config: ViewConfig, columns: dict[str, dict[str, object]]):
     """Create a ViewSQLBuilder with pre-populated _table_columns."""
     builder = ViewSQLBuilder.__new__(ViewSQLBuilder)
     builder._config = config
+    builder._registry = {}
     builder._param_counter = 0
     builder._params = {}
     builder._table_columns = columns
@@ -34,23 +35,23 @@ def _make_builder(config: ViewConfig, columns: dict[str, dict[str, object]]):
 
 # ── Shared column fixtures ───────────────────────────────────────────────
 
-REFUND_COLS = {
-    "refund_orders": {
-        "refund_order_no": object(),
-        "refund_amount": object(),
+ORDER_COLS = {
+    "orders": {
+        "order_no": object(),
+        "amount": object(),
         "status": object(),
         "created_at": object(),
     }
 }
 
-REFUND_SERVICE_COLS = {
-    "refund_orders": {
-        "refund_order_no": object(),
-        "refund_amount": object(),
+ORDER_WORKER_COLS = {
+    "orders": {
+        "order_no": object(),
+        "amount": object(),
         "status": object(),
         "created_at": object(),
     },
-    "service_refund_work_orders": {
+    "work_orders": {
         "work_order_no": object(),
         "order_no": object(),
         "status": object(),
@@ -66,18 +67,18 @@ REFUND_SERVICE_COLS = {
 def test_datetime_trunc_year():
     """DATE_TRUNC('year', col) is generated for year-level truncation."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
+        from_tables=["orders"],
         computed_columns=[
             ComputedColumnSpec(
                 alias="order_year",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
+                trunc_column=ComputedOperand(type="column", table="orders", column="created_at"),
                 trunc_unit="year",
             )
         ],
         selected_computed_columns=["order_year"],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, params = builder.build()
     assert "DATE_TRUNC('year'" in sql
     assert "order_year" in sql.lower()
@@ -85,18 +86,18 @@ def test_datetime_trunc_year():
 
 def test_datetime_trunc_month():
     config = ViewConfig(
-        from_tables=["refund_orders"],
+        from_tables=["orders"],
         computed_columns=[
             ComputedColumnSpec(
                 alias="order_month",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
+                trunc_column=ComputedOperand(type="column", table="orders", column="created_at"),
                 trunc_unit="month",
             )
         ],
         selected_computed_columns=["order_month"],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build()
     assert "DATE_TRUNC('month'" in sql
     assert "order_month" in sql.lower()
@@ -104,18 +105,18 @@ def test_datetime_trunc_month():
 
 def test_datetime_trunc_day():
     config = ViewConfig(
-        from_tables=["refund_orders"],
+        from_tables=["orders"],
         computed_columns=[
             ComputedColumnSpec(
                 alias="order_day",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
+                trunc_column=ComputedOperand(type="column", table="orders", column="created_at"),
                 trunc_unit="day",
             )
         ],
         selected_computed_columns=["order_day"],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build()
     assert "DATE_TRUNC('day'" in sql
     assert "order_day" in sql.lower()
@@ -125,7 +126,7 @@ def test_datetime_trunc_missing_column_raises():
     """Missing trunc_column raises SQLBuildError."""
     builder = ViewSQLBuilder.__new__(ViewSQLBuilder)
     config = ViewConfig(
-        from_tables=["refund_orders"],
+        from_tables=["orders"],
         computed_columns=[
             ComputedColumnSpec(
                 alias="bad",
@@ -141,12 +142,12 @@ def test_datetime_trunc_missing_unit_raises():
     """Missing trunc_unit raises SQLBuildError."""
     builder = ViewSQLBuilder.__new__(ViewSQLBuilder)
     config = ViewConfig(
-        from_tables=["refund_orders"],
+        from_tables=["orders"],
         computed_columns=[
             ComputedColumnSpec(
                 alias="bad",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
+                trunc_column=ComputedOperand(type="column", table="orders", column="created_at"),
             )
         ],
     )
@@ -162,17 +163,17 @@ def test_datetime_trunc_missing_unit_raises():
 def test_date_range_both_start_and_end():
     """Both date_start and date_end produce a combined WHERE clause."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="refund_order_no")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="order_no")],
         filters=[
             FilterSpec(
-                column="refund_orders.created_at",
+                column="orders.created_at",
                 date_start="2026-01-01",
                 date_end="2026-06-30",
             )
         ],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, params = builder.build()
     assert "WHERE" in sql
     assert ">=" in sql
@@ -187,16 +188,16 @@ def test_date_range_both_start_and_end():
 def test_date_range_start_only():
     """Only date_start produces a >= condition."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="refund_order_no")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="order_no")],
         filters=[
             FilterSpec(
-                column="refund_orders.created_at",
+                column="orders.created_at",
                 date_start="2026-01-01",
             )
         ],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, params = builder.build()
     assert "WHERE" in sql
     assert "::DATE" in sql  # column-side cast
@@ -208,16 +209,16 @@ def test_date_range_start_only():
 def test_date_range_end_only():
     """Only date_end produces a < condition with INTERVAL."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="refund_order_no")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="order_no")],
         filters=[
             FilterSpec(
-                column="refund_orders.created_at",
+                column="orders.created_at",
                 date_end="2026-06-30",
             )
         ],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, params = builder.build()
     assert "WHERE" in sql
     assert "<" in sql
@@ -230,18 +231,18 @@ def test_date_range_end_only():
 def test_date_range_combined_with_operator_filter():
     """Date range filter coexists with an operator-based filter via AND."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="refund_order_no")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="order_no")],
         filters=[
-            FilterSpec(column="refund_orders.status", operator="eq", value="已完成"),
+            FilterSpec(column="orders.status", operator="eq", value="已完成"),
             FilterSpec(
-                column="refund_orders.created_at",
+                column="orders.created_at",
                 date_start="2026-01-01",
                 date_end="2026-06-30",
             ),
         ],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, params = builder.build()
     assert "WHERE" in sql
     assert " AND " in sql
@@ -258,44 +259,44 @@ def test_date_range_combined_with_operator_filter():
 
 def test_order_by_single_column():
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="refund_amount")],
-        order_by=[OrderSpec(column="refund_orders.refund_amount", direction="desc")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="amount")],
+        order_by=[OrderSpec(column="orders.amount", direction="desc")],
         limit=10,
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build()
     assert "ORDER BY" in sql
-    assert "refund_amount DESC" in sql
+    assert "amount DESC" in sql
     assert "LIMIT" not in sql  # LIMIT is applied at runtime, not in stored SQL
 
 
 def test_order_by_multiple_columns():
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="status")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="status")],
         order_by=[
-            OrderSpec(column="refund_orders.status", direction="asc"),
-            OrderSpec(column="refund_orders.refund_amount", direction="desc"),
+            OrderSpec(column="orders.status", direction="asc"),
+            OrderSpec(column="orders.amount", direction="desc"),
         ],
         limit=5,
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build()
     assert "ORDER BY" in sql
     assert "status ASC" in sql
-    assert "refund_amount DESC" in sql
+    assert "amount DESC" in sql
     assert "LIMIT" not in sql
 
 
 def test_order_by_without_limit_skips_order():
     """ORDER BY is skipped when apply_limit=False (e.g. for counts)."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="status")],
-        order_by=[OrderSpec(column="refund_orders.refund_amount", direction="desc")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="status")],
+        order_by=[OrderSpec(column="orders.amount", direction="desc")],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build(apply_limit=False)
     assert "ORDER BY" not in sql
 
@@ -303,11 +304,11 @@ def test_order_by_without_limit_skips_order():
 def test_order_by_no_limit():
     """ORDER BY appears even without LIMIT set."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="status")],
-        order_by=[OrderSpec(column="refund_orders.status", direction="asc")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="status")],
+        order_by=[OrderSpec(column="orders.status", direction="asc")],
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build()
     assert "ORDER BY" in sql
     assert "status ASC" in sql
@@ -316,12 +317,12 @@ def test_order_by_no_limit():
 def test_order_by_computed_column():
     """ORDER BY can reference a computed column alias."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
+        from_tables=["orders"],
         computed_columns=[
             ComputedColumnSpec(
                 alias="order_year",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
+                trunc_column=ComputedOperand(type="column", table="orders", column="created_at"),
                 trunc_unit="year",
             )
         ],
@@ -329,7 +330,7 @@ def test_order_by_computed_column():
         order_by=[OrderSpec(column="order_year", direction="desc")],
         limit=10,
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build()
     assert "ORDER BY" in sql
     assert "order_year DESC" in sql
@@ -338,11 +339,11 @@ def test_order_by_computed_column():
 def test_limit_not_in_generated_sql():
     """User LIMIT is never in the generated SQL — applied at runtime."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
-        columns=[ColumnSpec(table="refund_orders", column="refund_order_no")],
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="order_no")],
         limit=50,
     )
-    builder = _make_builder(config, REFUND_COLS)
+    builder = _make_builder(config, ORDER_COLS)
     sql, _ = builder.build()
     assert "LIMIT" not in sql
 
@@ -355,51 +356,51 @@ def test_limit_not_in_generated_sql():
 def test_full_pipeline_join_filter_order_limit():
     """All new features work together in a realistic query."""
     config = ViewConfig(
-        from_tables=["refund_orders"],
+        from_tables=["orders"],
         joins=[
             JoinSpec(
-                left_table="refund_orders",
-                right_table="service_refund_work_orders",
+                left_table="orders",
+                right_table="work_orders",
                 join_type="INNER",
-                left_key="refund_order_no",
+                left_key="order_no",
                 right_key="order_no",
             )
         ],
         columns=[
-            ColumnSpec(table="refund_orders", column="refund_order_no", alias="退费单号"),
-            ColumnSpec(table="refund_orders", column="status", alias="状态"),
+            ColumnSpec(table="orders", column="order_no", alias="订单号"),
+            ColumnSpec(table="orders", column="status", alias="状态"),
         ],
         filters=[
             FilterSpec(
-                column="refund_orders.created_at",
+                column="orders.created_at",
                 date_start="2026-01-01",
                 date_end="2026-12-31",
             ),
-            FilterSpec(column="refund_orders.status", operator="eq", value="已完成"),
+            FilterSpec(column="orders.status", operator="eq", value="已完成"),
         ],
         aggregations=[
-            AggregationSpec(function="SUM", column="refund_amount", alias="总金额"),
+            AggregationSpec(function="SUM", column="amount", alias="总金额"),
             AggregationSpec(function="COUNT", column="*", alias="数量"),
         ],
         computed_columns=[
             ComputedColumnSpec(
                 alias="order_month",
                 expression_type="datetime_trunc",
-                trunc_column=ComputedOperand(type="column", table="refund_orders", column="created_at"),
+                trunc_column=ComputedOperand(type="column", table="orders", column="created_at"),
                 trunc_unit="month",
             )
         ],
         selected_computed_columns=["order_month"],
-        group_by=["refund_orders.status", "order_month"],
+        group_by=["orders.status", "order_month"],
         order_by=[OrderSpec(column="总金额", direction="desc")],
         limit=100,
     )
-    builder = _make_builder(config, REFUND_SERVICE_COLS)
+    builder = _make_builder(config, ORDER_WORKER_COLS)
     sql, params = builder.build()
 
     # Structural assertions
     assert "SELECT" in sql
-    assert "FROM refund_orders" in sql
+    assert "FROM orders" in sql
     assert "INNER JOIN" in sql
     assert "WHERE" in sql
     assert "GROUP BY" in sql
@@ -423,30 +424,32 @@ def test_full_pipeline_join_filter_order_limit():
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_dispose_engine_after_test")
-async def test_date_filter_preview_integration():
+async def test_date_filter_preview_integration(shared_dynamic_table):
     """Date range filter executes successfully via preview API."""
     from httpx import ASGITransport, AsyncClient
 
     from main import app
+    from tests.conftest import ensure_shared_table
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
         resp = await client.post(
             "/api/views/preview",
             json={
                 "config_json": {
-                    "from_tables": ["service_refund_work_orders"],
+                    "from_tables": [table],
                     "joins": [],
                     "columns": [
                         {
-                            "table": "service_refund_work_orders",
-                            "column": "work_order_no",
-                            "alias": "工单号",
+                            "table": table,
+                            "column": "order_no",
+                            "alias": "订单号",
                         }
                     ],
                     "filters": [
                         {
-                            "column": "service_refund_work_orders.registered_at",
+                            "column": f"{table}.record_time",
                             "date_start": "2026-01-01",
                         }
                     ],
@@ -466,19 +469,21 @@ async def test_date_filter_preview_integration():
         assert "columns" in data
         # Verify the SQL contains the date filter
         assert "::DATE" in data["sql"]
-        assert "registered_at" in data["sql"]
+        assert "record_time" in data["sql"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_dispose_engine_after_test")
-async def test_get_view_data_with_params_integration():
+async def test_get_view_data_with_params_integration(shared_dynamic_table):
     """get_view_data passes filter params correctly — no 'param_1' bind error."""
     from httpx import ASGITransport, AsyncClient
 
     from main import app
+    from tests.conftest import ensure_shared_table
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
         # 1. Create a view with a date range filter (generates :param_N placeholders)
         create_resp = await client.post(
             "/api/views",
@@ -486,18 +491,18 @@ async def test_get_view_data_with_params_integration():
                 "name": "_test_view_data_params",
                 "description": "Integration test — delete me",
                 "config_json": {
-                    "from_tables": ["service_refund_work_orders"],
+                    "from_tables": [table],
                     "joins": [],
                     "columns": [
                         {
-                            "table": "service_refund_work_orders",
-                            "column": "work_order_no",
-                            "alias": "工单号",
+                            "table": table,
+                            "column": "order_no",
+                            "alias": "订单号",
                         }
                     ],
                     "filters": [
                         {
-                            "column": "service_refund_work_orders.registered_at",
+                            "column": f"{table}.record_time",
                             "date_start": "2026-01-01",
                             "date_end": "2026-12-31",
                         }
@@ -532,14 +537,16 @@ async def test_get_view_data_with_params_integration():
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_dispose_engine_after_test")
-async def test_get_view_data_with_operator_filter_integration():
+async def test_get_view_data_with_operator_filter_integration(shared_dynamic_table):
     """get_view_data with text-operator filter passes params correctly."""
     from httpx import ASGITransport, AsyncClient
 
     from main import app
+    from tests.conftest import ensure_shared_table
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
         # 1. Create a view with a text operator filter
         create_resp = await client.post(
             "/api/views",
@@ -547,23 +554,23 @@ async def test_get_view_data_with_operator_filter_integration():
                 "name": "_test_view_data_op_filter",
                 "description": "Integration test — delete me",
                 "config_json": {
-                    "from_tables": ["service_refund_work_orders"],
+                    "from_tables": [table],
                     "joins": [],
                     "columns": [
                         {
-                            "table": "service_refund_work_orders",
-                            "column": "work_order_no",
-                            "alias": "工单号",
+                            "table": table,
+                            "column": "order_no",
+                            "alias": "订单号",
                         },
                         {
-                            "table": "service_refund_work_orders",
+                            "table": table,
                             "column": "status",
                             "alias": "状态",
                         },
                     ],
                     "filters": [
                         {
-                            "column": "service_refund_work_orders.status",
+                            "column": f"{table}.status",
                             "operator": "eq",
                             "value": "已完成",
                         }
@@ -598,14 +605,16 @@ async def test_get_view_data_with_operator_filter_integration():
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_dispose_engine_after_test")
-async def test_get_view_data_limit_caps_total_and_pages():
+async def test_get_view_data_limit_caps_total_and_pages(shared_dynamic_table):
     """When config.limit is set, total is capped and pagination is consistent."""
     from httpx import ASGITransport, AsyncClient
 
     from main import app
+    from tests.conftest import ensure_shared_table
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
         # 1. Create a view with limit=5 (small cap to test pagination)
         create_resp = await client.post(
             "/api/views",
@@ -613,13 +622,13 @@ async def test_get_view_data_limit_caps_total_and_pages():
                 "name": "_test_view_limit_cap",
                 "description": "Integration test — delete me",
                 "config_json": {
-                    "from_tables": ["service_refund_work_orders"],
+                    "from_tables": [table],
                     "joins": [],
                     "columns": [
                         {
-                            "table": "service_refund_work_orders",
-                            "column": "work_order_no",
-                            "alias": "工单号",
+                            "table": table,
+                            "column": "order_no",
+                            "alias": "订单号",
                         }
                     ],
                     "filters": [],

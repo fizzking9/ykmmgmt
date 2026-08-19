@@ -59,24 +59,18 @@ STATIC_MIGRATIONS_DIR = BACKEND_DIR / "alembic" / "versions"
 # Ensure it exists before any alembic command scans version_locations
 RUNTIME_MIGRATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
-# The three pre-existing business tables are inspection-only
-READ_ONLY_TABLES: frozenset[str] = frozenset({"refund_orders", "service_refund_work_orders", "wallet_withdrawals"})
-
 IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 INT_RE = re.compile(r"^-?\d+$")
 
-RESERVED_TABLE_NAMES: frozenset[str] = (
-    frozenset(
-        {
-            "alembic_version",
-            "datasources",
-            "import_jobs",
-            "views",
-            "visualizations",
-            "dashboards",
-        }
-    )
-    | READ_ONLY_TABLES
+RESERVED_TABLE_NAMES: frozenset[str] = frozenset(
+    {
+        "alembic_version",
+        "datasources",
+        "import_jobs",
+        "views",
+        "visualizations",
+        "dashboards",
+    }
 )
 
 RESERVED_COLUMN_NAMES: frozenset[str] = frozenset({"id", "content_hash", "imported_at", "created_at"})
@@ -932,7 +926,7 @@ async def list_tables_info(db: AsyncSession) -> list[dict[str, Any]]:
                 "chinese_name": schema_validator.get_chinese_table_name(name),
                 "column_count": column_count,
                 "row_count": result.scalar() or 0,
-                "read_only": name in READ_ONLY_TABLES,
+                "read_only": False,
                 "dynamic": name in _DYNAMIC_TABLES,
             }
         )
@@ -978,7 +972,7 @@ async def table_detail(db: AsyncSession, name: str) -> dict[str, Any]:
     return {
         "name": name,
         "chinese_name": schema_validator.get_chinese_table_name(name),
-        "read_only": name in READ_ONLY_TABLES,
+        "read_only": False,
         "dynamic": name in _DYNAMIC_TABLES,
         "upsert_key": (_TABLE_SETTINGS.get(name) or {}).get("upsert_key", []),
         "dedup_enabled": (_TABLE_SETTINGS.get(name) or {}).get("dedup_enabled", True),

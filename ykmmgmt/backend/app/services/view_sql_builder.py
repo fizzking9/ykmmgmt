@@ -39,7 +39,7 @@ _AGG_FUNCTIONS: set[str] = {"SUM", "COUNT", "AVG", "MIN", "MAX"}
 
 # Regex to check for valid SQL identifiers
 _IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-# Regex to strip auto-generated suffix from aliased table names (e.g. refund_orders_1 → refund_orders)
+# Regex to strip auto-generated suffix from aliased table names (e.g. orders_1 → orders)
 _ALIAS_SUFFIX_RE = re.compile(r"_\d+$")
 
 
@@ -53,10 +53,10 @@ def _quote_ident(name: str) -> str:
 def _base_table_name(alias: str) -> str:
     """Strip auto-generated numeric suffix to get the base table name.
 
-    >>> _base_table_name("refund_orders_1")
-    "refund_orders"
-    >>> _base_table_name("refund_orders")
-    "refund_orders"
+    >>> _base_table_name("orders_1")
+    "orders"
+    >>> _base_table_name("orders")
+    "orders"
     """
     return _ALIAS_SUFFIX_RE.sub("", alias)
 
@@ -88,7 +88,7 @@ class ViewSQLBuilder:
         self._params: dict[str, Any] = {}
 
         # Build a lookup: {logical_name: {column_name: column_info}}
-        # Logical names may include aliases (e.g. refund_orders_1);
+        # Logical names may include aliases (e.g. orders_1);
         # schema lookup uses the base name (strips _N suffix).
         self._table_columns: dict[str, dict[str, Any]] = {}
         self._all_tables: set[str] = set()
@@ -102,7 +102,7 @@ class ViewSQLBuilder:
 
         seen_bases: set[str] = set()
         for logical_name in self._all_tables:
-            base = _base_table_name(logical_name)
+            base = self._resolve_base_name(logical_name)
             if base in seen_bases:
                 continue
             seen_bases.add(base)
@@ -114,13 +114,25 @@ class ViewSQLBuilder:
             # Map both the base name and any aliases to the same columns
             self._table_columns[logical_name] = cols
             for other in self._all_tables:
-                if _base_table_name(other) == base:
+                if self._resolve_base_name(other) == base:
                     self._table_columns[other] = cols
 
         # Build computed column expression map: {alias: full_sql_expression}
         self._computed_exprs: dict[str, str] = {}
         for cc in self._config.computed_columns:
             self._computed_exprs[cc.alias] = self._build_computed_expr(cc)
+
+    def _resolve_base_name(self, name: str) -> str:
+        """Resolve a logical table name to its registered base table.
+
+        Registered names are used verbatim — a real dynamic table name may
+        legitimately end in digits (e.g. sales_2026) and must not be
+        mistaken for a self-join alias. Only unregistered names get the
+        auto-generated ``_N`` alias suffix stripped.
+        """
+        if name in self._registry:
+            return name
+        return _base_table_name(name)
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -240,7 +252,7 @@ class ViewSQLBuilder:
     def _build_from(self) -> str:
         """Build FROM clause using the first table (no alias needed for primary)."""
         primary = self._config.from_tables[0]
-        base = _base_table_name(primary)
+        base = self._resolve_base_name(primary)
         if primary != base:
             # Aliased primary table (shouldn't normally happen, but handle it)
             return f"FROM {_quote_ident(base)} AS {_quote_ident(primary)}"
@@ -268,7 +280,7 @@ class ViewSQLBuilder:
             left_col = self._resolve_column(join.left_key, join.left_table)
             right_table_alias = join.right_alias or join.right_table
             right_col = self._resolve_column(join.right_key, right_table_alias)
-            base_right = _base_table_name(join.right_table)
+            base_right = self._resolve_base_name(join.right_table)
             if join.right_alias:
                 clause = (
                     f"{jt} {_quote_ident(base_right)} AS {_quote_ident(join.right_alias)} ON {left_col} = {right_col}"

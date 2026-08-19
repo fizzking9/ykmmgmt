@@ -2,8 +2,7 @@
 
 Covers schema inspection, column-type listing, manual create, CSV
 inference (against real sample CSV files on disk), add/drop/modify
-column, delete table, the read-only guard on business tables, and
-runtime registry visibility.
+column, delete table, and runtime registry visibility.
 
 Every test creates uniquely-named tables and purges them (table +
 generated migrations + version chain) afterwards — tests run against
@@ -19,8 +18,6 @@ from main import app
 from tests.schema_cleanup import migration_exists, purge_dynamic_table, purge_dynamic_tables
 
 pytestmark = pytest.mark.usefixtures("_dispose_engine_after_test")
-
-BUSINESS_TABLES = ["refund_orders", "service_refund_work_orders", "wallet_withdrawals"]
 
 
 def _unique(prefix: str) -> str:
@@ -45,19 +42,27 @@ async def _create_table(client: AsyncClient, name: str, columns=None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_schema_tables_lists_all_with_read_only_flags():
+async def test_schema_tables_lists_dynamic_tables_with_flags():
+    """Dynamically created tables are listed with correct flags and counts."""
+    name = _unique("list")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/api/schema/tables")
-        assert resp.status_code == 200
-        tables = {t["name"]: t for t in resp.json()}
+        try:
+            await _create_table(client, name)
+            resp = await client.get("/api/schema/tables")
+            assert resp.status_code == 200
+            tables = {t["name"]: t for t in resp.json()}
 
-        for name in BUSINESS_TABLES:
             assert name in tables
-            assert tables[name]["read_only"] is True
-            assert tables[name]["chinese_name"]
-            assert "column_count" in tables[name]
-            assert "row_count" in tables[name]
+            info = tables[name]
+            # The system ships with no built-in tables — everything is editable
+            assert info["read_only"] is False
+            assert info["dynamic"] is True
+            assert info["chinese_name"] == "测试表"
+            assert "column_count" in info
+            assert "row_count" in info
+        finally:
+            await purge_dynamic_table(name)
 
 
 @pytest.mark.asyncio
@@ -404,28 +409,49 @@ async def test_delete_with_dependencies_requires_confirm():
             await purge_dynamic_table(name)
 
 
-# ── Read-only guard on business tables ─────────────────────────────────────
+# ── System reset: zero built-in business tables ──────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_read_only_guard_on_business_tables():
+async def test_system_starts_with_zero_builtin_business_tables():
+    """No hardcoded business tables remain anywhere in the system.
+
+    A fresh database yields only system tables: the ORM metadata defines
+    nothing else, the validation registry holds no legacy names, and the
+    Schema Manager table list exposes no read-only (preset) entries.
+    """
+    from app.core.database import Base
+    from app.services.schema_validator import get_registered_tables
+
+    legacy = {"refund_orders", "service_refund_work_orders", "wallet_withdrawals"}
+
+    # ORM metadata defines all system tables; any other entry is a
+    # dynamically created user table (restored from the shared dev DB),
+    # never a hardcoded business model.
+    system_tables = {
+        "datasources",
+        "import_jobs",
+        "views",
+        "visualizations",
+        "dashboards",
+        "column_meta",
+        "table_meta",
+    }
+    metadata_names = set(Base.metadata.tables.keys())
+    assert system_tables <= metadata_names
+    assert not legacy & metadata_names
+
+    # No legacy table is registered anywhere
+    assert not legacy & set(get_registered_tables())
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        for table in BUSINESS_TABLES:
-            resp = await client.delete(f"/api/schema/tables/{table}")
-            assert resp.status_code == 403
-
-            resp = await client.post(
-                f"/api/schema/tables/{table}/columns",
-                json={"name": "hack", "type": "Text", "label": "hack"},
-            )
-            assert resp.status_code == 403
-
-            resp = await client.delete(f"/api/schema/tables/{table}/columns/id")
-            assert resp.status_code == 403
-
-            resp = await client.put(f"/api/schema/tables/{table}/columns/id", json={"type": "Text"})
-            assert resp.status_code == 403
+        resp = await client.get("/api/schema/tables")
+        assert resp.status_code == 200
+        tables = resp.json()
+        assert not any(t["name"] in legacy for t in tables)
+        # Every listed table is a user-created, editable one
+        assert all(t["read_only"] is False and t["dynamic"] is True for t in tables)
 
 
 # ── Primary key & foreign key support ───────────────────────────────────────
