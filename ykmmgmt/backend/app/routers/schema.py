@@ -78,12 +78,7 @@ def _raise_error(err: sm.SchemaManagerError) -> HTTPException:
 
 
 def _get_editable_model(name: str) -> Any:
-    """Return the model for an editable (dynamic) table, or raise 403/404."""
-    if name in sm.READ_ONLY_TABLES:
-        raise HTTPException(
-            status_code=403,
-            detail=f"'{name}' 是预置业务表，仅可查看，不允许编辑或删除",
-        )
+    """Return the model for an editable (dynamic) table, or raise 404."""
     model = schema_validator.get_registered_model(name)
     if model is None or name not in sm.get_dynamic_table_names():
         raise HTTPException(status_code=404, detail=f"数据表 '{name}' 不存在或不可编辑")

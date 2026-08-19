@@ -19,14 +19,6 @@ const COLUMN_TYPES = [
 
 const TABLES = [
   {
-    name: "refund_orders",
-    chinese_name: "退费单",
-    column_count: 12,
-    row_count: 100,
-    read_only: true,
-    dynamic: false,
-  },
-  {
     name: "customer_orders",
     chinese_name: "客户订单",
     column_count: 4,
@@ -170,26 +162,21 @@ beforeEach(() => {
 // ── Table list ─────────────────────────────────────────────────────────────
 
 describe("数据表列表页", () => {
-  it("渲染所有数据表，预置业务表隐藏编辑/删除操作", () => {
+  it("渲染所有自建数据表，提供查看/编辑/删除操作", () => {
     renderWithProviders(
       <Routes>
         <Route path="/schema" element={<SchemaTablesPage />} />
       </Routes>,
     );
 
-    expect(screen.getByText("退费单")).toBeInTheDocument();
     expect(screen.getByText("客户订单")).toBeInTheDocument();
-    expect(screen.getByText("预置业务表")).toBeInTheDocument();
     expect(screen.getByText("自建数据表")).toBeInTheDocument();
-
-    // Read-only table: only 查看 action
-    const readOnlyRow = screen.getByText("退费单").closest("tr")!;
-    expect(readOnlyRow.textContent).toContain("查看");
-    expect(readOnlyRow.textContent).not.toContain("编辑");
-    expect(readOnlyRow.textContent).not.toContain("删除");
+    // The system ships with no preset business tables
+    expect(screen.queryByText("预置业务表")).not.toBeInTheDocument();
 
     // Dynamic table: all actions visible
     const dynamicRow = screen.getByText("客户订单").closest("tr")!;
+    expect(dynamicRow.textContent).toContain("查看");
     expect(dynamicRow.textContent).toContain("编辑");
     expect(dynamicRow.textContent).toContain("删除");
   });

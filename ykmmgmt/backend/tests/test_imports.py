@@ -1,11 +1,12 @@
-"""Tests for the import endpoint and related services."""
+"""Tests for the import endpoint and related services.
+
+The system ships with no built-in business tables, so every DB-backed test
+runs against a dynamically created fixture table (Schema Manager API).
+"""
 
 import pandas as pd
 import pytest
 
-# Import main to register models for schema validation tests
-import main  # noqa: F401
-from app.models import RefundOrder, ServiceRefundWorkOrder, WalletWithdrawal
 from app.services.cleaning import (
     CleaningPipeline,
     CleaningReport,
@@ -16,12 +17,8 @@ from app.services.cleaning import (
     strip_whitespace,
     validate_values,
 )
-from app.services.import_service import ImportError, get_upsert_key
+from app.services.import_service import ImportError
 from app.services.parsers import detect_encoding, parse_file
-from app.services.schema_validator import (
-    get_registered_tables,
-    resolve_target_table,
-)
 
 
 class TestCleaningPipeline:
@@ -161,30 +158,6 @@ class TestParsers:
         assert len(df) == 1  # Empty row dropped
 
 
-class TestSchemaValidator:
-    """Tests for schema validation utilities."""
-
-    def test_resolve_target_table_english(self):
-        result = resolve_target_table("refund_orders")
-        assert result == "refund_orders"
-
-    def test_resolve_target_table_chinese(self):
-        result = resolve_target_table("退费单")
-        assert result == "refund_orders"
-
-    def test_resolve_target_table_unknown(self):
-        result = resolve_target_table("nonexistent")
-        assert result is None
-
-    def test_get_registered_tables(self):
-        tables = get_registered_tables()
-        assert "refund_orders" in tables
-        assert "service_refund_work_orders" in tables
-        assert "wallet_withdrawals" in tables
-        # The dev database may also hold user-created dynamic tables
-        # (restored into the registry by earlier tests), so no exact count.
-
-
 class TestImportError:
     """Tests for ImportError exception class."""
 
@@ -200,183 +173,86 @@ class TestImportError:
         assert exc.details == {"key": "val"}
 
 
-class TestUpsertKey:
-    """Tests for upsert key discovery."""
+# ── Schema validation against a dynamically created table ──────────────────
 
-    def test_refund_order_upsert_key(self):
-        key = get_upsert_key(RefundOrder)
-        assert key == ["refund_order_no"]
+pytestmark_db = pytest.mark.usefixtures("_dispose_engine_after_test")
 
-    def test_service_refund_upsert_key(self):
-        key = get_upsert_key(ServiceRefundWorkOrder)
-        assert key == ["work_order_no"]
 
-    def test_wallet_withdrawal_no_upsert_key(self):
-        key = get_upsert_key(WalletWithdrawal)
-        assert key == []
+@pytestmark_db
+@pytest.mark.asyncio
+async def test_resolve_target_table_by_english_and_chinese(shared_dynamic_table):
+    """resolve_target_table accepts both the English name and the display name."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.services.schema_validator import resolve_target_table
+    from main import app
+    from tests.conftest import ensure_shared_table
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
+
+        assert resolve_target_table(table) == table
+        assert resolve_target_table("测试业务表") == table
+
+
+@pytestmark_db
+@pytest.mark.asyncio
+async def test_resolve_target_table_unknown():
+    """Unknown target table names resolve to None."""
+    from app.services.schema_validator import resolve_target_table
+
+    assert resolve_target_table("nonexistent") is None
+
+
+@pytestmark_db
+@pytest.mark.asyncio
+async def test_registry_starts_without_builtin_tables(shared_dynamic_table):
+    """The model registry holds only dynamically created tables."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.services.schema_validator import get_registered_tables
+    from main import app
+    from tests.conftest import ensure_shared_table
+
+    legacy = {"refund_orders", "service_refund_work_orders", "wallet_withdrawals"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
+        tables = set(get_registered_tables())
+        assert table in tables
+        assert not legacy & tables
+
+
+# ── Import service integration (dynamic fixture table) ─────────────────────
 
 
 @pytest.mark.usefixtures("_dispose_engine_after_test")
 @pytest.mark.asyncio(loop_scope="class")
-class TestUpsertIntegration:
-    """Integration tests for upsert behavior — requires running database."""
+class TestImportServiceIntegration:
+    """Integration tests for ImportService — requires running database."""
 
-    async def test_upsert_inserts_new_rows(self):
-        """First upload inserts all rows, zero updated."""
+    async def test_csv_import_inserts_rows_and_records_job(self, shared_dynamic_table):
+        """A CSV upload inserts rows and records matching job statistics."""
         import tempfile
         import uuid
         from pathlib import Path
 
-        from app.core.database import async_session_factory
-        from app.services.import_service import ImportService
-
-        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
-        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-001,100.00\n"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
-            f.write(csv_content)
-            tmp_path = Path(f.name)
-
-        try:
-            async with async_session_factory() as db:
-                service = ImportService(db)
-                result = await service.run_import(tmp_path, "refund_orders")
-                await db.commit()
-
-                assert result["rows_inserted"] >= 1
-                assert result["rows_updated"] == 0
-                assert result["total_rows"] >= 1
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-    async def test_upsert_updates_existing_rows(self):
-        """Re-upload with changed values updates existing rows, zero inserted."""
-        import tempfile
-        import uuid
-        from pathlib import Path
-
-        from app.core.database import async_session_factory
-        from app.services.import_service import ImportService
-
-        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
-        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-002,200.00\n"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
-            f.write(csv_content)
-            tmp_path = Path(f.name)
-
-        try:
-            async with async_session_factory() as db:
-                service = ImportService(db)
-                result1 = await service.run_import(tmp_path, "refund_orders")
-                assert result1["rows_inserted"] >= 1
-                assert result1["rows_updated"] == 0
-
-                # Second upload with CHANGED values — should count as update
-                csv_changed = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-002-CHANGED,999.99\n"
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f2:
-                    f2.write(csv_changed)
-                    tmp_path2 = Path(f2.name)
-                try:
-                    result2 = await service.run_import(tmp_path2, "refund_orders")
-                    await db.commit()
-
-                    assert result2["rows_inserted"] == 0
-                    assert result2["rows_updated"] >= 1
-                finally:
-                    tmp_path2.unlink(missing_ok=True)
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-    async def test_upsert_preserves_business_key(self):
-        """Business key value unchanged after update."""
-        import tempfile
-        import uuid
-        from pathlib import Path
-
-        from sqlalchemy import select as sa_select
-
-        from app.core.database import async_session_factory
-        from app.services.import_service import ImportService
-
-        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
-        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-003,300.00\n"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
-            f.write(csv_content)
-            tmp_path = Path(f.name)
-
-        try:
-            async with async_session_factory() as db:
-                service = ImportService(db)
-                await service.run_import(tmp_path, "refund_orders")
-
-                csv_updated = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-003-CHANGED,999.99\n"
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f2:
-                    f2.write(csv_updated)
-                    tmp_path2 = Path(f2.name)
-                try:
-                    await service.run_import(tmp_path2, "refund_orders")
-                    await db.commit()
-
-                    stmt = sa_select(RefundOrder).where(RefundOrder.refund_order_no == unique_id)
-                    result = await db.execute(stmt)
-                    record = result.scalar_one_or_none()
-                    assert record is not None
-                    assert record.refund_order_no == unique_id
-                    assert record.platform_order_no == "ORDER-003-CHANGED"
-                    assert float(record.refund_amount) == 999.99
-                finally:
-                    tmp_path2.unlink(missing_ok=True)
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-    async def test_wallet_withdrawal_hash_dedup(self):
-        """WalletWithdrawal uses content_hash — re-import same data is skipped."""
-        import tempfile
-        import uuid
-        from pathlib import Path
-
-        from app.core.database import async_session_factory
-        from app.services.import_service import ImportService
-
-        unique_sn = f"SN-{uuid.uuid4().hex[:8]}"
-        csv_content = f"账户ID,SN,操作类型,操作金额,操作时间\nACC-HASH-001,{unique_sn},提现,99.99,2026-06-15 10:00:00\n"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
-            f.write(csv_content)
-            tmp_path = Path(f.name)
-
-        try:
-            async with async_session_factory() as db:
-                service = ImportService(db)
-
-                # First import: all rows should be inserted
-                result1 = await service.run_import(tmp_path, "wallet_withdrawals")
-                assert result1["rows_inserted"] >= 1
-                assert result1["rows_updated"] == 0
-                assert result1["rows_skipped"] == 0
-
-                # Second import of the SAME data: all rows should be skipped
-                result2 = await service.run_import(tmp_path, "wallet_withdrawals")
-                await db.commit()
-
-                assert result2["rows_inserted"] == 0
-                assert result2["rows_updated"] == 0
-                assert result2["rows_skipped"] >= 1
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-    async def test_upsert_stats_in_import_job(self):
-        """ImportJob records correct upsert breakdown."""
-        import tempfile
-        import uuid
-        from pathlib import Path
-
+        from httpx import ASGITransport, AsyncClient
         from sqlalchemy import select as sa_select
 
         from app.core.database import async_session_factory
         from app.models import ImportJob
         from app.services.import_service import ImportService
+        from main import app
+        from tests.conftest import ensure_shared_table
 
-        unique_id = f"TEST-UP-{uuid.uuid4().hex[:8]}"
-        csv_content = f"退费单号,平台订单号,退费金额\n{unique_id},ORDER-004,400.00\n"
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            table = await ensure_shared_table(client, shared_dynamic_table)
+
+        unique_id = f"IMP-{uuid.uuid4().hex[:8]}"
+        csv_content = f"订单号,金额,状态,记录时间\n{unique_id},123.45,已完成,2026-06-10 09:00:00\n"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8-sig") as f:
             f.write(csv_content)
             tmp_path = Path(f.name)
@@ -384,36 +260,46 @@ class TestUpsertIntegration:
         try:
             async with async_session_factory() as db:
                 service = ImportService(db)
-                result = await service.run_import(tmp_path, "refund_orders")
+                result = await service.run_import(tmp_path, table)
                 await db.commit()
 
+                assert result["status"] == "completed"
+                assert result["rows_inserted"] == 1
+                assert result["rows_updated"] == 0
+                assert result["total_rows"] == 1
+                assert "cleaning_report" in result
+
                 stmt = sa_select(ImportJob).where(ImportJob.id == result["import_job_id"])
-                job_result = await db.execute(stmt)
-                job = job_result.scalar_one()
+                job = (await db.execute(stmt)).scalar_one()
                 assert job.rows_inserted == result["rows_inserted"]
                 assert job.rows_updated == result["rows_updated"]
                 assert job.rows_skipped == result["rows_skipped"]
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    async def test_excel_import_inserts_rows(self):
+    async def test_excel_import_inserts_rows(self, shared_dynamic_table):
         """Excel (.xlsx) import works same as CSV."""
         import tempfile
         import uuid
         from pathlib import Path
 
+        import openpyxl
+        from httpx import ASGITransport, AsyncClient
+
         from app.core.database import async_session_factory
         from app.services.import_service import ImportService
+        from main import app
+        from tests.conftest import ensure_shared_table
 
-        unique_id = f"RB{str(uuid.uuid4().int)[-14:]}"
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            table = await ensure_shared_table(client, shared_dynamic_table)
 
-        # Create a .xlsx file with openpyxl
-        import openpyxl
-
+        unique_id = f"XL-{uuid.uuid4().hex[:8]}"
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.append(["退费单号", "平台订单号", "退费金额"])
-        ws.append([unique_id, "ORDER-XL-001", "123.45"])
+        ws.append(["订单号", "金额", "状态", "记录时间"])
+        ws.append([unique_id, "234.56", "已完成", "2026-06-11 10:00:00"])
 
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
             tmp_path = Path(f.name)
@@ -422,13 +308,13 @@ class TestUpsertIntegration:
         try:
             async with async_session_factory() as db:
                 service = ImportService(db)
-                result = await service.run_import(tmp_path, "refund_orders")
+                result = await service.run_import(tmp_path, table)
                 await db.commit()
 
                 assert result["status"] == "completed"
-                assert result["rows_inserted"] >= 1
+                assert result["rows_inserted"] == 1
                 assert result["rows_updated"] == 0
-                assert result["total_rows"] >= 1
+                assert result["total_rows"] == 1
                 assert "cleaning_report" in result
         finally:
             tmp_path.unlink(missing_ok=True)

@@ -2,8 +2,9 @@
 
 Every test creates its own uniquely-named view and only ever deletes what it
 created — tests run against the shared dev database and must never touch
-pre-existing user data (an earlier version deleted `views[0]` and silently
-removed user-created views on every test run).
+pre-existing user data. Views are built against a dynamically created
+fixture table (Schema Manager API), since the system ships with no built-in
+business tables.
 """
 
 import uuid
@@ -12,6 +13,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
+from tests.conftest import ensure_shared_table
 
 pytestmark = pytest.mark.usefixtures("_dispose_engine_after_test")
 
@@ -21,12 +23,12 @@ def _unique_name(prefix: str = "测试视图") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
-async def _create_view(client: AsyncClient) -> str:
-    """Helper: create a throwaway view and return its ID."""
+async def _create_view(client: AsyncClient, table: str) -> str:
+    """Helper: create a throwaway view on the fixture table and return its ID."""
     view_config = {
-        "from_tables": ["refund_orders"],
+        "from_tables": [table],
         "joins": [],
-        "columns": [{"table": "refund_orders", "column": "id", "alias": None}],
+        "columns": [{"table": table, "column": "order_no", "alias": None}],
         "computed_columns": [],
         "selected_computed_columns": [],
         "filters": [],
@@ -42,10 +44,11 @@ async def _create_view(client: AsyncClient) -> str:
 
 
 @pytest.mark.asyncio
-async def test_list_views_returns_array():
+async def test_list_views_returns_array(shared_dynamic_table):
     """GET /api/views returns a JSON array with correct keys and ordering."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await ensure_shared_table(client, shared_dynamic_table)
         response = await client.get("/api/views")
         assert response.status_code == 200
         data = response.json()
@@ -70,11 +73,12 @@ async def test_list_views_returns_array():
 
 
 @pytest.mark.asyncio
-async def test_get_view_detail():
+async def test_get_view_detail(shared_dynamic_table):
     """GET /api/views/{id} returns full view with config_json and generated_sql."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await ensure_shared_table(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         try:
             response = await client.get(f"/api/views/{view_id}")
             assert response.status_code == 200
@@ -99,11 +103,12 @@ async def test_get_view_404():
 
 
 @pytest.mark.asyncio
-async def test_get_view_data():
+async def test_get_view_data(shared_dynamic_table):
     """GET /api/views/{id}/data returns paginated results."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await ensure_shared_table(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         try:
             response = await client.get(f"/api/views/{view_id}/data", params={"page": 1, "size": 10})
             assert response.status_code == 200
@@ -132,11 +137,12 @@ async def test_get_view_data_404():
 
 
 @pytest.mark.asyncio
-async def test_get_view_data_size_capped():
+async def test_get_view_data_size_capped(shared_dynamic_table):
     """GET /api/views/{id}/data caps size at 100."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        view_id = await _create_view(client)
+        table = await ensure_shared_table(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
         try:
             response = await client.get(f"/api/views/{view_id}/data", params={"page": 1, "size": 200})
             assert response.status_code == 200
@@ -149,12 +155,13 @@ async def test_get_view_data_size_capped():
 
 
 @pytest.mark.asyncio
-async def test_delete_view_returns_204():
+async def test_delete_view_returns_204(shared_dynamic_table):
     """DELETE /api/views/{id} returns 204 and view is removed."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
         # Create a dedicated throwaway view — never delete pre-existing views
-        view_id = await _create_view(client)
+        view_id = await _create_view(client, table)
 
         # Delete it
         del_resp = await client.delete(f"/api/views/{view_id}")

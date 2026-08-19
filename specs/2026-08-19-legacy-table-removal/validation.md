@@ -13,6 +13,8 @@ python -m alembic upgrade head
 
 **Expected:** Migration completes without errors. `alembic current` shows the new head revision.
 
+**Status: PASS (2026-08-19)** — `b7d3e9a14f25` applies cleanly on the dev database and on a brand-new database (full chain `a97bfa4a5039 → b7d3e9a14f25`); `alembic_version` at `b7d3e9a14f25`.
+
 ---
 
 ## Gate 2 — Legacy Tables Are Gone
@@ -39,6 +41,8 @@ asyncio.run(check())
 ```
 
 **Expected:** `OK: legacy tables absent` printed. Only system tables remain.
+
+**Status: PASS (2026-08-19)** — `information_schema.tables` after upgrade: alembic_version, column_meta, dashboards, datasources, import_jobs, table_meta, views, visualizations (plus user-created dynamic tables on the dev DB). No refund_orders / service_refund_work_orders / wallet_withdrawals.
 
 ---
 
@@ -70,6 +74,8 @@ asyncio.run(check())
 
 **Expected:** `OK: no orphaned dependent objects` printed.
 
+**Status: PASS (2026-08-19)** — counts after migration: views 0, visualizations 0, dashboards 0; no rows reference any legacy table name in generated_sql / config_json / layout_json.
+
 ---
 
 ## Gate 4 — Backend Starts Without Errors
@@ -83,6 +89,8 @@ print('OK: app imports cleanly')
 ```
 
 **Expected:** `OK: app imports cleanly` printed. No `ImportError`, `AttributeError`, or registry warnings.
+
+**Status: PASS (2026-08-19)** — `import main` succeeds; `table_specific.get_rules(...)` returns `[]` (empty registry functional); uvicorn startup log clean, no registry warnings.
 
 ---
 
@@ -108,6 +116,8 @@ asyncio.run(check())
 
 **Expected:** `OK: zero business tables` printed.
 
+**Status: PASS (2026-08-19)** — on a freshly migrated database, `GET /api/schema/tables` returns `[]` and `GET /api/tables` returns `[]`. New regression test `test_system_starts_with_zero_builtin_business_tables` asserts no built-in models/registrations.
+
 ---
 
 ## Gate 6 — Backend Tests Pass
@@ -119,6 +129,8 @@ python -m pytest tests/ -v --tb=short
 
 **Expected:** All tests pass. No failures related to missing legacy tables or models.
 
+**Status: PASS (2026-08-19)** — 139 backend tests pass (run twice for stability), ruff clean. All view/visualization/dashboard/data-browser tests now run against dynamically created fixture tables via the real Schema Manager + import APIs.
+
 ---
 
 ## Gate 7 — Frontend Tests Pass
@@ -129,6 +141,8 @@ npm run test -- --run
 ```
 
 **Expected:** All Vitest tests pass. No failures related to `退费单` or `read_only` legacy assertions.
+
+**Status: PASS (2026-08-19)** — 65 frontend tests pass, `tsc --noEmit` clean; legacy `退费单` fixture and read-only assertions removed from SchemaManager.test.tsx.
 
 ---
 
@@ -148,16 +162,18 @@ Manual verification:
 
 **Expected:** Full flow works without errors. No references to legacy tables anywhere in the UI.
 
+**Status: PASS (2026-08-19)** — full in-browser walkthrough on a fresh database: zero tables on first launch → manual create `test_products` → CSV upload (3 新增, cleaning report) → Data Browser rows → View Builder preview + save → bar-chart visualization → dashboard tile rendering. No console errors, no legacy references. Screenshots in `.qoder/verify_step*.png`.
+
 ---
 
 ## Merge Checklist
 
-- [ ] All 8 gates pass on a clean checkout
-- [ ] Alembic migration applies and rolls back cleanly (`alembic downgrade -1` then `alembic upgrade head`)
-- [ ] No legacy table names found in codebase (`grep -r "refund_orders\|service_refund_work_orders\|wallet_withdrawals" ykmmgmt/`)
-- [ ] No legacy model files remain (`ls ykmmgmt/backend/app/models/refund_order.py ykmmgmt/backend/app/models/service_refund_work_order.py ykmmgmt/backend/app/models/wallet_withdrawal.py` → file not found)
-- [ ] No table-specific rule files remain (`ls ykmmgmt/backend/app/services/table_specific/refund_order.py ykmmgmt/backend/app/services/table_specific/service_refund.py ykmmgmt/backend/app/services/table_specific/wallet_withdrawal.py` → file not found)
-- [ ] `seed.py` deleted
-- [ ] Legacy CSV files removed from project root
-- [ ] All tests pass (backend + frontend)
-- [ ] Fresh database starts with zero business tables
+- [x] All 8 gates pass on a clean checkout
+- [x] Alembic migration applies and rolls back cleanly (`alembic downgrade -1` then `alembic upgrade head`)
+- [x] No legacy table names found in codebase (`grep -r "refund_orders\|service_refund_work_orders\|wallet_withdrawals" ykmmgmt/`)
+- [x] No legacy model files remain (`ls ykmmgmt/backend/app/models/refund_order.py ykmmgmt/backend/app/models/service_refund_work_order.py ykmmgmt/backend/app/models/wallet_withdrawal.py` → file not found)
+- [x] No table-specific rule files remain (`ls ykmmgmt/backend/app/services/table_specific/refund_order.py ykmmgmt/backend/app/services/table_specific/service_refund.py ykmmgmt/backend/app/services/table_specific/wallet_withdrawal.py` → file not found)
+- [x] `seed.py` deleted
+- [x] Legacy CSV files removed from project root
+- [x] All tests pass (backend + frontend)
+- [x] Fresh database starts with zero business tables

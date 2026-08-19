@@ -6,12 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Import table-specific cleaning rules (triggers @register decorators)
-import app.services.table_specific.refund_order  # noqa: F401
-import app.services.table_specific.service_refund  # noqa: F401
-import app.services.table_specific.wallet_withdrawal  # noqa: F401
 from app.core.database import engine, get_db
-from app.models import RefundOrder, ServiceRefundWorkOrder, WalletWithdrawal
 from app.routers.dashboards import router as dashboards_router
 from app.routers.imports import router as imports_router
 from app.routers.schema import router as schema_router
@@ -19,14 +14,8 @@ from app.routers.tables import router as tables_router
 from app.routers.views import router as views_router
 from app.routers.visualizations import router as visualizations_router
 from app.services.schema_manager import SchemaManagerError
-from app.services.schema_validator import register_model
 
 logger = logging.getLogger("ykmmgmt")
-
-# Register models for schema validation (English name → model class)
-register_model("refund_orders", RefundOrder)
-register_model("service_refund_work_orders", ServiceRefundWorkOrder)
-register_model("wallet_withdrawals", WalletWithdrawal)
 
 app = FastAPI(title="YKMMgmt", version="0.1.0")
 

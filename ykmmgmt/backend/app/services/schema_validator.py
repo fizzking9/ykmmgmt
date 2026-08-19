@@ -22,12 +22,9 @@ class SchemaValidationResult:
     expected: list[str] = field(default_factory=list)
 
 
-# English table name → Chinese display name
-TABLE_DISPLAY_NAMES: dict[str, str] = {
-    "refund_orders": "退费单",
-    "service_refund_work_orders": "服务退款工单",
-    "wallet_withdrawals": "钱包提现操作",
-}
+# English table name → Chinese display name (populated dynamically by the
+# Schema Manager; the system ships with zero built-in business tables)
+TABLE_DISPLAY_NAMES: dict[str, str] = {}
 
 # Reverse mapping for Chinese → English
 CHINESE_TO_ENGLISH_TABLE: dict[str, str] = {v: k for k, v in TABLE_DISPLAY_NAMES.items()}
