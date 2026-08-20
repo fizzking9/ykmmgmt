@@ -655,3 +655,80 @@ async def test_data_invalid_start_date_rejected(shared_dynamic_table):
         assert "格式无效" in resp.json()["detail"]
 
         await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_data_time_profile_with_dotted_chinese_alias(shared_dynamic_table):
+    """date_column may be a view OUTPUT alias containing dots + Chinese.
+
+    Regression test: after a viz gains a time config, dashboard tiles pass
+    its default granularity. The endpoint used to reject aliased date
+    columns like "订单.下单日期" with 422 (invalid identifier), leaving the
+    tile stuck loading forever.
+    """
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await _setup(client, shared_dynamic_table)
+        time_alias = "订单.记录时间"
+        amount_alias = "订单.金额"
+        view_config = {
+            "from_tables": [table],
+            "joins": [],
+            "columns": [
+                {"table": table, "column": "record_time", "alias": time_alias},
+                {"table": table, "column": "amount", "alias": amount_alias},
+            ],
+            "computed_columns": [],
+            "selected_computed_columns": [],
+            "filters": [],
+            "group_by": [],
+            "aggregations": [],
+        }
+        resp = await client.post(
+            "/api/views",
+            json={"name": _unique_name("别名时间视图"), "description": "t", "config_json": view_config},
+        )
+        assert resp.status_code == 201
+        view_id = resp.json()["id"]
+
+        resp = await client.post(
+            "/api/visualizations",
+            json={
+                "name": _unique_name("别名时间可视化"),
+                "view_id": view_id,
+                "chart_type": "line",
+                "config_json": {
+                    "x_column": time_alias,
+                    "y_columns": [amount_alias],
+                    "date_column": time_alias,
+                    "default_granularity": "month",
+                    "default_agg": "SUM",
+                },
+            },
+        )
+        assert resp.status_code == 201
+        viz_id = resp.json()["id"]
+
+        # Granularity override (what dashboard tiles send) must succeed
+        resp = await client.get(
+            f"/api/visualizations/{viz_id}/data",
+            params={"granularity": "month", "agg": "SUM"},
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["columns"][0] == time_alias
+        # Fixture rows span June + July 2026 → two monthly buckets
+        assert len(data["rows"]) == 2
+
+        # Date range override works against the alias too
+        resp = await client.get(
+            f"/api/visualizations/{viz_id}/data",
+            params={"start": "2026-06-01", "end": "2026-06-30"},
+        )
+        assert resp.status_code == 200, resp.text
+        rows = resp.json()["rows"]
+        assert len(rows) == 4  # June fixture rows
+        for row in rows:
+            assert row[time_alias][:7] == "2026-06"
+
+        await _cleanup(client, view_id, [viz_id])

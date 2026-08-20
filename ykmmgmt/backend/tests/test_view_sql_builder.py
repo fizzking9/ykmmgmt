@@ -252,6 +252,46 @@ def test_date_range_combined_with_operator_filter():
     # date params are date objects
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# GROUP BY + selected columns (rename / dedup)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def test_group_by_column_emitted_bare_when_not_selected():
+    """A grouped column not present in columns is emitted without alias."""
+    config = ViewConfig(
+        from_tables=["orders"],
+        group_by=["orders.status"],
+        aggregations=[AggregationSpec(function="SUM", column="amount", alias="总金额")],
+    )
+    builder = _make_builder(config, ORDER_COLS)
+    sql, _ = builder.build()
+    select_line = sql.splitlines()[0]
+    assert "orders.status" in select_line
+    assert "orders.status AS" not in select_line
+
+
+def test_group_by_column_renamed_via_selected_alias():
+    """A grouped + selected column is emitted once under the selected alias.
+
+    This is how group-by columns are renamed, and it must not produce a
+    duplicate output column.
+    """
+    config = ViewConfig(
+        from_tables=["orders"],
+        columns=[ColumnSpec(table="orders", column="status", alias="订单状态")],
+        group_by=["orders.status"],
+        aggregations=[AggregationSpec(function="SUM", column="amount", alias="总金额")],
+    )
+    builder = _make_builder(config, ORDER_COLS)
+    sql, _ = builder.build()
+    select_line = sql.splitlines()[0]
+    assert 'orders.status AS "订单状态"' in select_line
+    # Emitted exactly once — no duplicate bare copy
+    assert select_line.count("orders.status") == 1
+    assert "GROUP BY orders.status" in sql
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ORDER BY
 # ═══════════════════════════════════════════════════════════════════════════

@@ -1,7 +1,6 @@
 """Visualization CRUD endpoints — /api/visualizations."""
 
 import datetime as dt
-import re
 import uuid
 from typing import Literal
 
@@ -176,40 +175,38 @@ def _parse_iso_datetime(value: str, label: str) -> dt.datetime:
         ) from e
 
 
-async def _apply_time_profile(
-    db: AsyncSession,
-    base_sql: str,
-    params: dict,
-    date_column: str,
-    start: str | None,
-    end: str | None,
-    granularity: Granularity | None,
-    agg: AggFunction | None,
-) -> tuple[str, dict]:
-    """Wrap the base query with a parameterized date filter.
+def _parse_date_value(value: object) -> dt.datetime | None:
+    """Parse a row value (datetime/date/ISO string) into a datetime."""
+    if isinstance(value, dt.datetime):
+        return value
+    if isinstance(value, dt.date):
+        return dt.datetime(value.year, value.month, value.day)
+    if isinstance(value, str):
+        try:
+            return dt.datetime.fromisoformat(value)
+        except ValueError:
+            try:
+                d = dt.date.fromisoformat(value)
+                return dt.datetime(d.year, d.month, d.day)
+            except ValueError:
+                return None
+    return None
 
-    Values stay bound — never interpolated. Granularity re-bucketing is
-    applied as post-processing in ``_rebucket_rows`` (views may mix column
-    types, which SQL-level SUM() cannot handle generically).
-    """
-    if not re.fullmatch(r"\w+", date_column):
-        raise HTTPException(status_code=422, detail=f"无效的时间列名: '{date_column}'")
-    quoted = f'"{date_column}"'
 
-    merged = dict(params)
-    where_parts: list[str] = []
-    if start:
-        merged["tp_start"] = _parse_iso_datetime(start, "起始时间")
-        where_parts.append(f"{quoted} >= :tp_start")
-    if end:
-        merged["tp_end"] = _parse_iso_datetime(end, "结束时间")
-        where_parts.append(f"{quoted} <= :tp_end")
-
-    sql = base_sql
-    if where_parts:
-        sql = f"SELECT * FROM ({sql}) AS _tf WHERE {' AND '.join(where_parts)}"
-
-    return sql, merged
+def _in_date_range(
+    value: object,
+    start: dt.datetime | None,
+    end: dt.datetime | None,
+) -> bool:
+    """Inclusive range check; unparseable values are dropped."""
+    d = _parse_date_value(value)
+    if d is None:
+        return False
+    if start is not None and d < start:
+        return False
+    if end is not None and d > end:
+        return False
+    return True
 
 
 def _bucket_key(value: object, granularity: Granularity) -> dt.datetime | None:
@@ -346,13 +343,6 @@ async def get_visualization_data(
     except SQLBuildError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    # Apply optional time-profile overrides (date filter / re-bucketing).
-    # Only active when the visualization declares a date_column profile.
-    date_column = viz.config_json.get("date_column")
-    time_active = bool(date_column) and bool(start or end or granularity or agg)
-    if time_active:
-        sql, params = await _apply_time_profile(db, sql, params, date_column, start, end, granularity, agg)
-
     # Execute full query (no pagination)
     try:
         data_result = await db.execute(text(sql), params)
@@ -379,10 +369,28 @@ async def get_visualization_data(
                 row_dict[key] = val
         rows.append(row_dict)
 
-    # Granularity re-bucketing runs as post-processing so mixed-type view
-    # output (text columns etc.) does not break SQL aggregation.
-    if time_active and granularity:
-        columns, rows = _rebucket_rows(rows, date_column, granularity, agg or "SUM")
+    # Time-profile overrides (date range / re-bucketing) run as
+    # post-processing: date_column is a view OUTPUT alias (may contain dots
+    # and Chinese characters, e.g. "订单.下单日期"), so it cannot be
+    # validated as a bare SQL identifier or referenced in a WHERE wrap.
+    date_column = viz.config_json.get("date_column")
+    time_active = bool(date_column) and bool(start or end or granularity or agg)
+    if time_active:
+        if date_column not in columns:
+            raise HTTPException(
+                status_code=422,
+                detail=f"时间列 '{date_column}' 不在视图输出列中",
+            )
+        if start or end:
+            start_dt = _parse_iso_datetime(start, "起始时间") if start else None
+            end_dt = _parse_iso_datetime(end, "结束时间") if end else None
+            rows = [
+                r
+                for r in rows
+                if _in_date_range(r.get(date_column), start_dt, end_dt)
+            ]
+        if granularity:
+            columns, rows = _rebucket_rows(rows, date_column, granularity, agg or "SUM")
 
     return VisualizationDataResponse(
         columns=columns,

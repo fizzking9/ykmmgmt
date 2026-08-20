@@ -1,11 +1,12 @@
 """Data Browser endpoints — GET /api/tables, schema, and paginated data."""
 
 import datetime as dt
+import decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import Date, cast, func, inspect, select
+from sqlalchemy import Date, String, cast, func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -56,6 +57,38 @@ def _is_datetime_column(col: Any) -> bool:
         return issubclass(col.type.python_type, dt.datetime)
     except (AttributeError, TypeError):
         return False
+
+
+def _is_temporal_column(col: Any) -> bool:
+    """Check whether a column stores date or datetime values."""
+    try:
+        return issubclass(col.type.python_type, dt.date)
+    except (AttributeError, TypeError):
+        return False
+
+
+def _is_numeric_column(col: Any) -> bool:
+    """Check whether a column stores numeric values."""
+    try:
+        return issubclass(col.type.python_type, (int, float, decimal.Decimal))
+    except (AttributeError, TypeError):
+        return False
+
+
+# Operators supported by the column value filter (parity with View Builder)
+_FILTER_OPERATORS: set[str] = {
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "contains",
+    "startswith",
+    "endswith",
+    "is_null",
+    "is_not_null",
+}
 
 
 def _serialize(value: Any) -> Any:
@@ -124,7 +157,22 @@ async def get_table_data(
     filter_value: list[str] = Query(default_factory=list, description="列值筛选：值（与 filter_col 位置对应）"),
     filter_mode: list[str] = Query(
         default_factory=list,
-        description="列值筛选：模式 contains|exact（与 filter_col 位置对应）",
+        description="列值筛选（旧参数）：模式 contains|exact（与 filter_col 位置对应）",
+    ),
+    filter_op: list[str] = Query(
+        default_factory=list,
+        description=(
+            "列值筛选：操作符 eq|neq|gt|gte|lt|lte|contains|startswith|endswith|"
+            "is_null|is_not_null（与 filter_col 位置对应）"
+        ),
+    ),
+    filter_date_start: list[str] = Query(
+        default_factory=list,
+        description="列值筛选：日期范围起始 YYYY-MM-DD（与 filter_col 位置对应）",
+    ),
+    filter_date_end: list[str] = Query(
+        default_factory=list,
+        description="列值筛选：日期范围结束 YYYY-MM-DD（与 filter_col 位置对应）",
     ),
     sort_col: str | None = Query(None, description="排序列名"),
     sort_dir: str | None = Query(None, description="排序方向 asc|desc"),
@@ -139,8 +187,12 @@ async def get_table_data(
     (time of day is ignored).  Both ends are inclusive.
 
     Column value filtering uses positional repeated params:
-    ``filter_col[0]`` with ``filter_value[0]`` and ``filter_mode[0]``.
-    Mode ``contains`` uses SQL LIKE %value%; ``exact`` uses =.
+    ``filter_col[0]`` with ``filter_op[0]``/``filter_value[0]`` (or
+    ``filter_date_start[0]``/``filter_date_end[0]`` for date ranges).
+    Operators mirror the View Builder: ``eq``/``neq``/``gt``/``gte``/``lt``/
+    ``lte``/``contains``/``startswith``/``endswith``/``is_null``/
+    ``is_not_null``.  The legacy ``filter_mode`` param (contains|exact) is
+    still accepted as a fallback when ``filter_op`` is absent.
 
     Sorting uses ``sort_col`` + ``sort_dir`` (asc/desc, default asc).
     """
@@ -189,21 +241,104 @@ async def get_table_data(
         for i, col_name in enumerate(filter_col):
             if col_name not in visible_columns:
                 continue
+            col = model.__table__.columns.get(col_name)
+            if col is None:
+                continue
+
+            # Date-range filter row (start-only, end-only, or both)
+            date_start = filter_date_start[i] if i < len(filter_date_start) else ""
+            date_end = filter_date_end[i] if i < len(filter_date_end) else ""
+            if date_start or date_end:
+                date_col = cast(col, Date)
+                if date_start:
+                    try:
+                        start_date = dt.date.fromisoformat(date_start)
+                    except ValueError as err:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"筛选日期起始格式无效: '{date_start}'。请使用 YYYY-MM-DD 格式。",
+                        ) from err
+                    count_stmt = count_stmt.where(date_col >= start_date)
+                    data_stmt = data_stmt.where(date_col >= start_date)
+                if date_end:
+                    try:
+                        end_date = dt.date.fromisoformat(date_end)
+                    except ValueError as err:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"筛选日期结束格式无效: '{date_end}'。请使用 YYYY-MM-DD 格式。",
+                        ) from err
+                    count_stmt = count_stmt.where(date_col <= end_date)
+                    data_stmt = data_stmt.where(date_col <= end_date)
+                continue
+
+            # Operator — fall back to the legacy mode param when absent
+            op = filter_op[i] if i < len(filter_op) and filter_op[i] else ""
+            if not op:
+                mode = filter_mode[i] if i < len(filter_mode) else "contains"
+                op = "eq" if mode == "exact" else "contains"
+            if op not in _FILTER_OPERATORS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"不支持的筛选操作符: '{op}'",
+                )
+
+            if op == "is_null":
+                count_stmt = count_stmt.where(col.is_(None))
+                data_stmt = data_stmt.where(col.is_(None))
+                continue
+            if op == "is_not_null":
+                count_stmt = count_stmt.where(col.is_not(None))
+                data_stmt = data_stmt.where(col.is_not(None))
+                continue
+
             if i >= len(filter_value):
                 continue
             value = filter_value[i].strip()
             if not value:
                 continue
-            mode = filter_mode[i] if i < len(filter_mode) else "contains"
-            col = model.__table__.columns.get(col_name)
-            if col is None:
+
+            if op in ("contains", "startswith", "endswith"):
+                if op == "contains":
+                    pattern = f"%{value}%"
+                elif op == "startswith":
+                    pattern = f"{value}%"
+                else:
+                    pattern = f"%{value}"
+                # LIKE only works on text — cast non-text columns so the
+                # filter degrades gracefully instead of erroring
+                like_col = (
+                    cast(col, String) if _is_numeric_column(col) or _is_temporal_column(col) else col
+                )
+                count_stmt = count_stmt.where(like_col.like(pattern))
+                data_stmt = data_stmt.where(like_col.like(pattern))
                 continue
-            if mode == "exact":
-                count_stmt = count_stmt.where(col == value)
-                data_stmt = data_stmt.where(col == value)
-            else:  # contains (default)
-                count_stmt = count_stmt.where(col.like(f"%{value}%"))
-                data_stmt = data_stmt.where(col.like(f"%{value}%"))
+
+            # Comparison operators — numeric columns require a numeric value
+            cmp_value: Any = value
+            if _is_numeric_column(col):
+                try:
+                    cmp_value = float(value)
+                except ValueError as err:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"列 '{col_name}' 是数值列，筛选值 '{value}' 不是有效数字",
+                    ) from err
+
+            if op == "eq":
+                cond = col == cmp_value
+            elif op == "neq":
+                cond = col != cmp_value
+            elif op == "gt":
+                cond = col > cmp_value
+            elif op == "gte":
+                cond = col >= cmp_value
+            elif op == "lt":
+                cond = col < cmp_value
+            else:  # lte
+                cond = col <= cmp_value
+            count_stmt = count_stmt.where(cond)
+            data_stmt = data_stmt.where(cond)
 
     # Apply sort
     if sort_col and sort_col in visible_columns:

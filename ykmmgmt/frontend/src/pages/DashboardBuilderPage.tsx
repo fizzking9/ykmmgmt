@@ -255,9 +255,16 @@ function KpiTilePanel({
 // ── Live visualization preview inside a builder tile ─────────────────
 
 function BuilderVizPreview({ visualizationId }: { visualizationId?: string }) {
-  const { data, isLoading } = useVisualizationTileData(visualizationId, {});
+  const { data, isLoading, isError, error } = useVisualizationTileData(visualizationId, {});
   if (!visualizationId) {
     return <p className="p-3 text-center text-sm text-red-600">未选择可视化</p>;
+  }
+  if (isError) {
+    return (
+      <p className="p-3 text-center text-sm text-red-600">
+        数据加载失败：{error instanceof Error ? error.message : "未知错误"}
+      </p>
+    );
   }
   if (isLoading || !data) return <TileLoadingBody />;
   // Fill the tile exactly — WYSIWYG, no scrolling
