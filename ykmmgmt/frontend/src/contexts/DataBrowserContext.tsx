@@ -1,10 +1,25 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
+export type FilterOperator =
+  | "eq"
+  | "neq"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "contains"
+  | "startswith"
+  | "endswith"
+  | "is_null"
+  | "is_not_null";
+
 export interface ColumnFilter {
   col: string;
+  op: FilterOperator | "";
   value: string;
-  mode: "contains" | "exact";
+  dateStart: string;
+  dateEnd: string;
 }
 
 interface DataBrowserState {
@@ -36,7 +51,7 @@ interface DataBrowserContextValue {
 
 const DataBrowserContext = createContext<DataBrowserContextValue | null>(null);
 
-const EMPTY_FILTER: ColumnFilter = { col: "", value: "", mode: "contains" };
+const EMPTY_FILTER: ColumnFilter = { col: "", op: "", value: "", dateStart: "", dateEnd: "" };
 
 export function DataBrowserProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DataBrowserState>({

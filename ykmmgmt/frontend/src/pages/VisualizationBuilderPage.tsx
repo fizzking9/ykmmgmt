@@ -551,6 +551,33 @@ export default function VisualizationBuilderPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────
 
+  // Time-series charts (date column on the X axis) derive their dashboard
+  // time profile from the X-axis settings — the separate 时间配置 section is
+  // redundant and would create two competing granularities.
+  const isTimeSeriesChart =
+    (state.chartType === "line" || state.chartType === "scatter") &&
+    dateColumns.includes((state.configJson.x_column as string) ?? "");
+
+  const withDerivedTimeProfile = useCallback(
+    (config: Record<string, unknown>): Record<string, unknown> => {
+      if (isTimeSeriesChart) {
+        const granularity = (config.time_granularity as string) ?? "none";
+        return {
+          ...config,
+          date_column: (config.x_column as string) ?? "",
+          default_granularity: granularity === "none" ? "" : granularity,
+          default_agg: (config.time_aggregation as string) ?? "SUM",
+        };
+      }
+      // Non-time-series: no stale defaults when no time column is set
+      if (!(config.date_column as string)) {
+        return { ...config, default_granularity: "", default_agg: "" };
+      }
+      return config;
+    },
+    [isTimeSeriesChart],
+  );
+
   const handleSave = useCallback(async () => {
     if (!state.name.trim()) {
       toast.error("请输入可视化名称");
@@ -561,11 +588,11 @@ export default function VisualizationBuilderPage() {
       return;
     }
 
-    const configToSave = {
+    const configToSave = withDerivedTimeProfile({
       ...state.configJson,
       _colorTheme: state.colorTheme,
       _numberFormat: state.numberFormat,
-    };
+    });
     const trimmedName = state.name.trim();
 
     // Check if a visualization with this name already exists
@@ -595,15 +622,15 @@ export default function VisualizationBuilderPage() {
     } catch {
       // error handled by mutation
     }
-  }, [state, createViz, navigate, vizBuilder, vizList]);
+  }, [state, createViz, navigate, vizBuilder, vizList, withDerivedTimeProfile]);
 
   const handleConfirmUpdate = useCallback(async () => {
     if (!confirmDialog || !state.viewId) return;
-    const configToSave = {
+    const configToSave = withDerivedTimeProfile({
       ...state.configJson,
       _colorTheme: state.colorTheme,
       _numberFormat: state.numberFormat,
-    };
+    });
     try {
       const result = await updateViz.mutateAsync({
         id: confirmDialog.targetId,
@@ -619,7 +646,7 @@ export default function VisualizationBuilderPage() {
     } catch {
       // error handled by mutation
     }
-  }, [confirmDialog, state, updateViz, navigate, vizBuilder]);
+  }, [confirmDialog, state, updateViz, navigate, vizBuilder, withDerivedTimeProfile]);
 
   const handleExportPng = useCallback(async () => {
     if (!previewRef.current) return;
@@ -1009,16 +1036,27 @@ export default function VisualizationBuilderPage() {
           )}
 
           {/* Time Profile — enables dashboard global time filtering.
-              KPI cards use their own 日期列 setting (same date_column key). */}
+              KPI cards use their own 日期列 setting (same date_column key).
+              Time-series charts derive the profile from the X axis instead. */}
           {state.viewId && columns.length > 0 && state.chartType !== "kpi_card" && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">时间配置（可选）</CardTitle>
+                <CardTitle className="text-base">
+                  时间配置
+                  {isTimeSeriesChart ? (
+                    <span className="cursor-help text-muted-foreground" title="同X轴">
+                      （自动）
+                    </span>
+                  ) : (
+                    "（可选）"
+                  )}
+                </CardTitle>
               </CardHeader>
+              {!isTimeSeriesChart && (
               <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  设置时间列后，仪表盘的全局时间筛选（日期范围 / 粒度 / 聚合）才会作用于本可视化。
-                </p>
+                    <p className="text-xs text-muted-foreground">
+                      设置时间列后，仪表盘的全局时间筛选（日期范围 / 粒度 / 聚合）才会作用于本可视化。
+                    </p>
                 <div>
                   <label className="mb-1 block text-sm font-medium">时间列</label>
                   <Select
@@ -1109,6 +1147,7 @@ export default function VisualizationBuilderPage() {
                   </div>
                 )}
               </CardContent>
+              )}
             </Card>
           )}
 

@@ -186,8 +186,16 @@ class ViewSQLBuilder:
                 if col_name in self._computed_exprs:
                     continue  # handled by computed columns section below
                 qualified = self._resolve_column(col_name)
-                select_parts.append(qualified)
-                seen_select.add(qualified)
+                # If the same column is also explicitly selected, emit it once
+                # with the user's alias — this is how group-by columns are
+                # renamed, and it prevents duplicate output columns.
+                alias = self._selected_alias_for(qualified)
+                if alias:
+                    select_parts.append(f"{qualified} AS {_quote_ident(alias)}")
+                    seen_select.add(alias)
+                else:
+                    select_parts.append(qualified)
+                    seen_select.add(qualified)
 
         # Regular columns (dedup against GROUP BY)
         if self._config.columns:
@@ -227,6 +235,20 @@ class ViewSQLBuilder:
             return "SELECT *"
 
         return "SELECT " + ", ".join(select_parts)
+
+    def _selected_alias_for(self, qualified: str) -> str | None:
+        """Return the user alias if the qualified column is also selected.
+
+        Used by GROUP BY emission: a column present in both GROUP BY and the
+        selected columns is output once under the selected alias.
+        """
+        for col_spec in self._config.columns:
+            if not col_spec.alias:
+                continue
+            spec_qualified = self._resolve_column(col_spec.column, col_spec.table)
+            if spec_qualified == qualified:
+                return col_spec.alias
+        return None
 
     def _build_aggregation_expr(self, agg: AggregationSpec) -> str:
         func_upper = agg.function.upper()

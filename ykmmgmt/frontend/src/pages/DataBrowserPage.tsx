@@ -20,7 +20,11 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTables, TableOption } from "@/hooks/useTables";
-import { useDataBrowserContext, type ColumnFilter } from "@/contexts/DataBrowserContext";
+import {
+  useDataBrowserContext,
+  type ColumnFilter,
+  type FilterOperator,
+} from "@/contexts/DataBrowserContext";
 import { Database, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Plus, X } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -29,6 +33,54 @@ interface ColumnInfo {
   name: string;
   type: string;
   label: string;
+}
+
+type ColumnType = "text" | "number" | "date";
+
+function classifyColumnType(col: ColumnInfo): ColumnType {
+  const t = col.type.toLowerCase();
+  if (t.includes("int") || t.includes("float") || t.includes("numeric") || t.includes("decimal"))
+    return "number";
+  if (t.includes("datetime") || t.includes("date")) return "date";
+  return "text";
+}
+
+// Operators mirror the View Builder filter section
+const TEXT_OPERATORS: { value: FilterOperator; label: string }[] = [
+  { value: "eq", label: "等于" },
+  { value: "neq", label: "不等于" },
+  { value: "contains", label: "包含" },
+  { value: "startswith", label: "开头是" },
+  { value: "endswith", label: "结尾是" },
+  { value: "is_null", label: "为空" },
+  { value: "is_not_null", label: "不为空" },
+];
+
+const NUMERIC_OPERATORS: { value: FilterOperator; label: string }[] = [
+  { value: "eq", label: "等于" },
+  { value: "neq", label: "不等于" },
+  { value: "gt", label: "大于" },
+  { value: "gte", label: "大于等于" },
+  { value: "lt", label: "小于" },
+  { value: "lte", label: "小于等于" },
+  { value: "is_null", label: "为空" },
+  { value: "is_not_null", label: "不为空" },
+];
+
+function getOperators(colType: ColumnType) {
+  return colType === "number" ? NUMERIC_OPERATORS : TEXT_OPERATORS;
+}
+
+function defaultOperator(colType: ColumnType): FilterOperator {
+  return colType === "number" ? "eq" : "contains";
+}
+
+/** A filter row is applied when it has a column plus a usable condition. */
+function isFilterRowActive(f: ColumnFilter): boolean {
+  if (!f.col) return false;
+  if (f.op === "is_null" || f.op === "is_not_null") return true;
+  if (f.dateStart || f.dateEnd) return true;
+  return !!f.op && !!f.value;
 }
 
 interface TableDataResponse {
@@ -66,11 +118,13 @@ async function fetchData(
   if (end) params.set("end", end);
   if (columnFilters) {
     for (const f of columnFilters) {
-      if (f.col && f.value) {
-        params.append("filter_col", f.col);
-        params.append("filter_value", f.value);
-        params.append("filter_mode", f.mode);
-      }
+      if (!isFilterRowActive(f)) continue;
+      // All positional arrays stay index-aligned with filter_col
+      params.append("filter_col", f.col);
+      params.append("filter_op", f.op);
+      params.append("filter_value", f.value);
+      params.append("filter_date_start", f.dateStart);
+      params.append("filter_date_end", f.dateEnd);
     }
   }
   if (sortCol) params.set("sort_col", sortCol);
@@ -417,82 +471,152 @@ export default function DataBrowserPage() {
                       <p className="mb-3 text-sm text-muted-foreground">未添加筛选条件</p>
                     ) : (
                       <div className="mb-3 space-y-3">
-                        {columnFilters.map((f, i) => (
-                          <div key={i} className="flex items-end gap-3">
-                            <div className="w-40">
-                              <label className="mb-1 block text-xs font-medium">列</label>
-                              <div ref={i === 0 ? colFilterTriggerRef : undefined}>
-                                <Select
-                                  value={f.col}
-                                  onValueChange={(v) => v && updateColumnFilter(i, { col: v })}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue>
-                                      {schema?.find((c) => c.name === f.col)?.label ?? "选择列"}
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent
-                                    align="start"
-                                    sideOffset={4}
-                                    alignItemWithTrigger={false}
-                                    className="bg-background"
-                                    style={
-                                      colFilterWidth > 0 ? { width: colFilterWidth } : undefined
-                                    }
+                        {columnFilters.map((f, i) => {
+                          const filterColInfo = schema?.find((c) => c.name === f.col);
+                          const colType: ColumnType = filterColInfo
+                            ? classifyColumnType(filterColInfo)
+                            : "text";
+                          const operators = getOperators(colType);
+                          const opLabel =
+                            operators.find((o) => o.value === f.op)?.label || f.op;
+                          const isNullOp = f.op === "is_null" || f.op === "is_not_null";
+                          return (
+                            <div key={i} className="flex items-end gap-3">
+                              <div className="w-40">
+                                <label className="mb-1 block text-xs font-medium">列</label>
+                                <div ref={i === 0 ? colFilterTriggerRef : undefined}>
+                                  <Select
+                                    value={f.col}
+                                    onValueChange={(v) => {
+                                      if (!v) return;
+                                      const info = schema?.find((c) => c.name === v);
+                                      const type: ColumnType = info
+                                        ? classifyColumnType(info)
+                                        : "text";
+                                      // Reset the condition when the column type changes
+                                      updateColumnFilter(i, {
+                                        col: v,
+                                        op: defaultOperator(type),
+                                        value: "",
+                                        dateStart: "",
+                                        dateEnd: "",
+                                      });
+                                    }}
                                   >
-                                    {(schema ?? []).map((col) => (
-                                      <SelectItem key={col.name} value={col.name}>
-                                        {col.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                    <SelectTrigger>
+                                      <SelectValue>
+                                        {filterColInfo?.label ?? "选择列"}
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent
+                                      align="start"
+                                      sideOffset={4}
+                                      alignItemWithTrigger={false}
+                                      className="bg-background"
+                                      style={
+                                        colFilterWidth > 0 ? { width: colFilterWidth } : undefined
+                                      }
+                                    >
+                                      {(schema ?? []).map((col) => (
+                                        <SelectItem key={col.name} value={col.name}>
+                                          {col.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </div>
-                            </div>
-                            <div className="w-20">
-                              <label className="mb-1 block text-xs font-medium">模式</label>
-                              <Select
-                                value={f.mode}
-                                onValueChange={(v) =>
-                                  updateColumnFilter(i, { mode: v as "contains" | "exact" })
-                                }
+                              {colType === "date" ? (
+                                <>
+                                  <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                      起始日期
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={f.dateStart}
+                                      onChange={(e) =>
+                                        updateColumnFilter(i, { dateStart: e.target.value })
+                                      }
+                                      className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="mb-1 block text-xs font-medium">
+                                      结束日期
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={f.dateEnd}
+                                      onChange={(e) =>
+                                        updateColumnFilter(i, { dateEnd: e.target.value })
+                                      }
+                                      className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    />
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="w-24">
+                                    <label className="mb-1 block text-xs font-medium">操作符</label>
+                                    <Select
+                                      value={f.op}
+                                      onValueChange={(v) => {
+                                        if (v) {
+                                          updateColumnFilter(i, {
+                                            op: v as FilterOperator,
+                                            value:
+                                              v === "is_null" || v === "is_not_null"
+                                                ? ""
+                                                : f.value,
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger title={opLabel}>
+                                        <SelectValue>{opLabel || "选择操作符"}</SelectValue>
+                                      </SelectTrigger>
+                                      <SelectContent
+                                        align="start"
+                                        sideOffset={4}
+                                        alignItemWithTrigger={false}
+                                        className="bg-background"
+                                      >
+                                        {operators.map((op) => (
+                                          <SelectItem key={op.value} value={op.value}>
+                                            {op.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  {!isNullOp && (
+                                    <div className="flex-1">
+                                      <label className="mb-1 block text-xs font-medium">值</label>
+                                      <input
+                                        type="text"
+                                        value={f.value}
+                                        onChange={(e) =>
+                                          updateColumnFilter(i, { value: e.target.value })
+                                        }
+                                        placeholder="输入筛选值"
+                                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                      />
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0"
+                                onClick={() => removeColumnFilter(i)}
                               >
-                                <SelectTrigger>
-                                  <SelectValue>
-                                    {f.mode === "contains" ? "包含" : "精确"}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent
-                                  align="start"
-                                  sideOffset={4}
-                                  alignItemWithTrigger={false}
-                                  className="bg-background"
-                                >
-                                  <SelectItem value="contains">包含</SelectItem>
-                                  <SelectItem value="exact">精确</SelectItem>
-                                </SelectContent>
-                              </Select>
+                                <X className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <div className="flex-1">
-                              <label className="mb-1 block text-xs font-medium">值</label>
-                              <input
-                                type="text"
-                                value={f.value}
-                                onChange={(e) => updateColumnFilter(i, { value: e.target.value })}
-                                placeholder="输入筛选值"
-                                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              />
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="shrink-0"
-                              onClick={() => removeColumnFilter(i)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                     <div className="flex gap-2">

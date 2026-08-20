@@ -93,6 +93,14 @@ function VizTileBody({
   const { data: viz } = useVisualization(tile.visualization_id ?? undefined);
   const dateColumn = (viz?.config_json.date_column as string) ?? "";
   const timeEnabled = !!dateColumn;
+  // Time-series charts (date column on the X axis) bucket rows client-side
+  // via their own time_granularity. The builder derives date_column =
+  // x_column for them, so this equality is the time-series profile marker.
+  // For those tiles the dashboard must NOT stack a second server-side
+  // re-bucketing — it sends only the date range and injects the global
+  // granularity/agg overrides into the chart's own pipeline.
+  const xColumn = (viz?.config_json.x_column as string) ?? "";
+  const timeSeriesProfile = timeEnabled && !!xColumn && dateColumn === xColumn;
 
   // "auto" resolves to the visualization's own time-profile defaults.
   const params: VizDataTimeParams = useMemo(() => {
@@ -100,6 +108,7 @@ function VizTileBody({
     const p: VizDataTimeParams = {};
     if (filter.start) p.start = filter.start;
     if (filter.end) p.end = filter.end;
+    if (timeSeriesProfile) return p; // granularity/agg applied client-side
     if (filter.granularity && filter.granularity !== "auto") {
       p.granularity = filter.granularity;
     } else if (viz?.config_json.default_granularity) {
@@ -111,12 +120,27 @@ function VizTileBody({
       p.agg = viz.config_json.default_agg as string;
     }
     return p;
-  }, [timeEnabled, filter, viz]);
+  }, [timeEnabled, timeSeriesProfile, filter, viz]);
 
   const { data, isLoading, isError, error } = useVisualizationTileData(
     tile.visualization_id ?? undefined,
     params,
   );
+
+  // Global granularity/agg overrides for time-series tiles are applied in
+  // the chart's own bucketing pass (single pass, no distortion).
+  const renderData = useMemo(() => {
+    if (!data || !timeSeriesProfile) return data;
+    const overrides: Record<string, unknown> = {};
+    if (filter.granularity && filter.granularity !== "auto") {
+      overrides.time_granularity = filter.granularity;
+    }
+    if (filter.agg && filter.agg !== "auto") {
+      overrides.time_aggregation = filter.agg;
+    }
+    if (Object.keys(overrides).length === 0) return data;
+    return { ...data, config_json: { ...data.config_json, ...overrides } };
+  }, [data, timeSeriesProfile, filter]);
 
   const showHint = filterActive && !timeEnabled;
   // Charts fill the tile exactly (no scroll) so exports capture them whole;
@@ -131,9 +155,7 @@ function VizTileBody({
         </span>
       )}
       <div className={isTable ? "h-full overflow-auto" : "h-full overflow-hidden"}>
-        {isLoading || !data ? (
-          <TileLoadingBody />
-        ) : isError ? (
+        {isError ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-sm text-red-600">
             数据加载失败：{error instanceof Error ? error.message : "未知错误"}
             {onRefresh && (
@@ -142,8 +164,10 @@ function VizTileBody({
               </Button>
             )}
           </div>
+        ) : isLoading || !data ? (
+          <TileLoadingBody />
         ) : (
-          <VisualizationTileBody data={data} height={height} fill={!isTable} />
+          <VisualizationTileBody data={renderData ?? data} height={height} fill={!isTable} />
         )}
       </div>
     </div>

@@ -564,7 +564,45 @@ export default function ViewBuilderPage() {
   }
 
   function handleRemoveJoin(index: number) {
-    viewBuilder.setJoins(state.joins.filter((_, i) => i !== index));
+    const remainingJoins = state.joins.filter((_, i) => i !== index);
+    viewBuilder.setJoins(remainingJoins);
+
+    // Tables still reachable after this join is removed
+    const available = new Set<string>(state.fromTables.filter(Boolean));
+    for (const j of remainingJoins) {
+      if (j.right_table) available.add(j.right_table);
+      if (j.right_alias) available.add(j.right_alias);
+    }
+    // "table.column" reference whose table is no longer available
+    const orphanedRef = (ref: string) =>
+      ref.includes(".") && !available.has(ref.split(".", 1)[0]);
+
+    // Drop computed columns whose operands referenced the removed table
+    const ccOrphaned = (cc: ComputedColumnItem) =>
+      cc.operands.some((op) => op.type === "column" && !!op.table && !available.has(op.table)) ||
+      (!!cc.base_table && !available.has(cc.base_table)) ||
+      (!!cc.trunc_table && !available.has(cc.trunc_table));
+    const removedCCAliases = state.computedColumns
+      .filter(ccOrphaned)
+      .map((cc) => cc.alias)
+      .filter(Boolean);
+    if (removedCCAliases.length > 0) {
+      viewBuilder.setComputedColumns(state.computedColumns.filter((cc) => !ccOrphaned(cc)));
+      viewBuilder.setSelectedComputedColumns(
+        state.selectedComputedColumns.filter((a) => !removedCCAliases.includes(a)),
+      );
+    }
+
+    // Prune every reference into the removed table so preview/save cannot
+    // fail on dangling columns
+    const refRemoved = (ref: string) => orphanedRef(ref) || removedCCAliases.includes(ref);
+    viewBuilder.setColumns(state.columns.filter((c) => available.has(c.table)));
+    viewBuilder.setFilters(state.filters.filter((f) => !refRemoved(f.column)));
+    viewBuilder.setGroupBy(state.groupBy.filter((g) => !refRemoved(g)));
+    viewBuilder.setAggregations(
+      state.aggregations.filter((a) => a.column === "*" || !refRemoved(a.column)),
+    );
+    viewBuilder.setOrderBy(state.orderBy.filter((o) => !refRemoved(o.column)));
   }
 
   function handleToggleColumn(table: string, colName: string) {
@@ -1144,6 +1182,7 @@ export default function ViewBuilderPage() {
                     const selectedCol = state.columns.find(
                       (c) => c.table === t && c.column === col.name,
                     );
+                    const isGrouped = state.groupBy.includes(`${t}.${col.name}`);
                     const tableLabel = tableDisplayName(t, tables);
                     const fullLabel = `${tableLabel}.${col.label}`;
                     return (
@@ -1160,6 +1199,15 @@ export default function ViewBuilderPage() {
                         <span className="whitespace-nowrap text-sm" title={fullLabel}>
                           {fullLabel}
                         </span>
+                        {isGrouped && (
+                          <Badge
+                            variant="secondary"
+                            className="shrink-0 text-[10px]"
+                            title="该列已加入分组，会自动出现在结果中；在此勾选并设置别名可重命名输出列"
+                          >
+                            已分组
+                          </Badge>
+                        )}
                         {isChecked && (
                           <input
                             type="text"
