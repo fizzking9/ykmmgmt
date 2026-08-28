@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -17,6 +18,8 @@ import {
   type DashboardListResponse,
 } from "@/hooks/useDashboards";
 import { useDashboardBuilderContext } from "@/contexts/DashboardBuilderContext";
+import { DashboardExportCanvas } from "@/components/dashboard/DashboardExportCanvas";
+import { downloadBlob, elementToPngBlob, batchStamp, sanitizeFilename } from "@/lib/exportPng";
 import {
   SortableTimeHeader,
   nextSortDir,
@@ -34,6 +37,7 @@ import {
   RefreshCw,
   Plus,
   SpellCheck,
+  Download,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
@@ -165,6 +169,22 @@ export default function DashboardsListPage() {
   const [renameTarget, setRenameTarget] = useState<DashboardListResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DashboardListResponse | null>(null);
 
+  // ── PNG export & batch selection ──────────────────────────────────────
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Queue of dashboards pending PNG export (one at a time, off-screen)
+  const [exportQueue, setExportQueue] = useState<DashboardListResponse[]>([]);
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const exportWrapRef = useRef<HTMLDivElement>(null);
+  // Batch identifier ("dashboards_YYYY-MM-DD_HH-mm-ss") prefixed onto
+  // every filename in the current batch; null for single exports
+  const exportBatchRef = useRef<string | null>(null);
+  const exportTotalRef = useRef(0);
+  const exportDoneRef = useRef(0);
+  const exporting = exportQueue.length > 0;
+
   const handleSort = (col: TimeSortCol) => {
     if (sortCol === col) {
       setSortDir(nextSortDir(sortDir));
@@ -190,23 +210,157 @@ export default function DashboardsListPage() {
     [sortedRows, page],
   );
 
+  // ── Batch selection helpers ────────────────────────────────────────────
+
+  const enterSelectionMode = () => {
+    setSelectionMode(true);
+    setSelectedIds(new Set());
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // 全选 covers the whole list (all pages), not just the current page
+  const selectAll = () => setSelectedIds(new Set(sortedRows.map((d) => d.id)));
+  const clearAll = () => setSelectedIds(new Set());
+
+  // ── PNG export ────────────────────────────────────────────────────────
+  // Every file downloads straight to the browser's default download
+  // location (same as single exports — no save-as dialog). Batch files get
+  // a "dashboards_YYYY-MM-DD_HH-mm-ss" prefix so they group together;
+  // a real subfolder there is impossible without a directory picker.
+
+  const beginExport = (targets: DashboardListResponse[], batch: boolean) => {
+    if (targets.length === 0 || exporting) return;
+    exportTotalRef.current = targets.length;
+    exportDoneRef.current = 0;
+    setExportProgress({ done: 0, total: targets.length });
+    exportBatchRef.current = batch ? batchStamp("dashboards") : null;
+    setExportQueue(targets);
+  };
+
+  const handleCanvasReady = useCallback(
+    async (ok: boolean) => {
+      const current = exportQueue[0];
+      if (!current) return;
+      if (ok && exportWrapRef.current) {
+        try {
+          const blob = await elementToPngBlob(exportWrapRef.current);
+          const baseName = sanitizeFilename(current.name);
+          const filename = exportBatchRef.current
+            ? `${exportBatchRef.current}_${baseName}.png`
+            : `${baseName}.png`;
+          downloadBlob(blob, filename);
+          exportDoneRef.current += 1;
+        } catch {
+          toast.error(`「${current.name}」PNG 导出失败`);
+        }
+      } else {
+        toast.error(`「${current.name}」看板加载失败，已跳过`);
+      }
+      setExportProgress({ done: exportDoneRef.current, total: exportTotalRef.current });
+      const remaining = exportQueue.slice(1);
+      setExportQueue(remaining);
+      if (remaining.length === 0) {
+        const batch = exportBatchRef.current;
+        if (exportDoneRef.current > 0) {
+          if (batch) {
+            toast.success(
+              `已导出 ${exportDoneRef.current} 张 PNG 至下载目录（文件名前缀：${batch}）`,
+            );
+          } else {
+            toast.success(`已导出 ${exportDoneRef.current} 张 PNG`);
+          }
+        }
+        exportBatchRef.current = null;
+        setExportProgress(null);
+      }
+    },
+    [exportQueue],
+  );
+
+  const exportSelected = () => {
+    const targets = sortedRows.filter((d) => selectedIds.has(d.id));
+    exitSelectionMode();
+    beginExport(targets, true);
+  };
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">数据看板</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            新建看板
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
-            {isRefetching ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            刷新
-          </Button>
+        <div className="flex items-center gap-2">
+          {exporting && exportProgress && (
+            <span className="text-sm text-muted-foreground">
+              正在导出 {exportProgress.done}/{exportProgress.total}…
+            </span>
+          )}
+          {selectionMode ? (
+            <>
+              <span className="text-sm text-muted-foreground">已选 {selectedIds.size} 项</span>
+              <Button variant="outline" size="sm" onClick={selectAll} disabled={exporting}>
+                全选
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAll}
+                disabled={selectedIds.size === 0 || exporting}
+              >
+                清空
+              </Button>
+              <Button
+                size="sm"
+                onClick={exportSelected}
+                disabled={selectedIds.size === 0 || exporting}
+              >
+                {exporting ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-1 h-4 w-4" />
+                )}
+                导出所选
+              </Button>
+              <Button variant="outline" size="sm" onClick={exitSelectionMode} disabled={exporting}>
+                取消
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={handleCreate}>
+                <Plus className="mr-2 h-4 w-4" />
+                新建看板
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={enterSelectionMode}
+                disabled={exporting || !dashboards || dashboards.length === 0}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                批量导出
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
+                {isRefetching ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                刷新
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -228,16 +382,18 @@ export default function DashboardsListPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {selectionMode && <TableHead className="w-10">选择</TableHead>}
                 <TableHead>名称</TableHead>
                 <TableHead>描述</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>更新时间</TableHead>
-                <TableHead className="w-[260px]">操作</TableHead>
+                <TableHead className="w-[320px]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {Array.from({ length: 4 }).map((_, i) => (
                 <TableRow key={i}>
+                  {selectionMode && <TableCell />}
                   <TableCell>
                     <Skeleton className="h-5 w-32" />
                   </TableCell>
@@ -283,6 +439,7 @@ export default function DashboardsListPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {selectionMode && <TableHead className="w-10">选择</TableHead>}
                   <TableHead>名称</TableHead>
                   <TableHead>描述</TableHead>
                   <TableHead>
@@ -303,12 +460,24 @@ export default function DashboardsListPage() {
                       onSort={handleSort}
                     />
                   </TableHead>
-                  <TableHead className="w-[260px]">操作</TableHead>
+                  <TableHead className="w-[320px]">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pagedRows.map((dash) => (
                   <TableRow key={dash.id}>
+                    {selectionMode && (
+                      <TableCell className="w-10">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${dash.name}`}
+                          checked={selectedIds.has(dash.id)}
+                          onChange={() => toggleSelected(dash.id)}
+                          disabled={exporting}
+                          className="h-4 w-4"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="max-w-[200px] truncate font-medium" title={dash.name}>
                       {dash.name}
                     </TableCell>
@@ -341,6 +510,16 @@ export default function DashboardsListPage() {
                         >
                           <Pencil className="mr-1 h-4 w-4" />
                           编辑
+                        </Button>
+                        {/* 导出 PNG */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => beginExport([dash], false)}
+                          disabled={exporting}
+                        >
+                          <Download className="mr-1 h-4 w-4" />
+                          导出
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => setRenameTarget(dash)}>
                           <SpellCheck className="mr-1 h-4 w-4" />
@@ -413,6 +592,21 @@ export default function DashboardsListPage() {
       {deleteTarget && (
         <DeleteConfirmDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} />
       )}
+
+      {/* Offscreen export canvas — renders one queued dashboard at a time */}
+      <div
+        ref={exportWrapRef}
+        aria-hidden
+        style={{ position: "fixed", top: 0, left: -20000, width: 1280 }}
+      >
+        {exportQueue[0] && (
+          <DashboardExportCanvas
+            key={exportQueue[0].id}
+            dashboardId={exportQueue[0].id}
+            onReady={handleCanvasReady}
+          />
+        )}
+      </div>
     </div>
   );
 }

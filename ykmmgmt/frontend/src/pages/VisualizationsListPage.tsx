@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -24,6 +25,8 @@ import {
   VisualizationRenderer,
   isThumbnailChartType,
 } from "@/components/visualization/VisualizationRenderer";
+import { VisualizationExportCanvas } from "@/components/visualization/VisualizationExportCanvas";
+import { downloadBlob, elementToPngBlob, batchStamp, sanitizeFilename } from "@/lib/exportPng";
 import {
   SortableTimeHeader,
   nextSortDir,
@@ -42,6 +45,7 @@ import {
   Table2,
   CreditCard,
   Plus,
+  Download,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
@@ -187,6 +191,22 @@ export default function VisualizationsListPage() {
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [deleteTarget, setDeleteTarget] = useState<VisualizationListResponse | null>(null);
 
+  // ── PNG export & batch selection ──────────────────────────────────────
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Queue of visualizations pending PNG export (one at a time, off-screen)
+  const [exportQueue, setExportQueue] = useState<VisualizationListResponse[]>([]);
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const exportWrapRef = useRef<HTMLDivElement>(null);
+  // Batch identifier ("visualizations_YYYY-MM-DD_HH-mm-ss") prefixed onto
+  // every filename in the current batch; null for single exports
+  const exportBatchRef = useRef<string | null>(null);
+  const exportTotalRef = useRef(0);
+  const exportDoneRef = useRef(0);
+  const exporting = exportQueue.length > 0;
+
   const viewNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const v of views ?? []) map.set(v.id, v.name);
@@ -228,27 +248,161 @@ export default function VisualizationsListPage() {
 
   const refreshing = isRefetching;
 
+  // ── Batch selection helpers ────────────────────────────────────────────
+
+  const enterSelectionMode = () => {
+    setSelectionMode(true);
+    setSelectedIds(new Set());
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // 全选 covers the whole list (all pages), not just the current page
+  const selectAll = () => setSelectedIds(new Set(sortedRows.map((v) => v.id)));
+  const clearAll = () => setSelectedIds(new Set());
+
+  // ── PNG export ────────────────────────────────────────────────────────
+  // Every file downloads straight to the browser's default download
+  // location (same as single exports — no save-as dialog). Batch files get
+  // a "visualizations_YYYY-MM-DD_HH-mm-ss" prefix so they group together;
+  // a real subfolder there is impossible without a directory picker.
+
+  const beginExport = (targets: VisualizationListResponse[], batch: boolean) => {
+    if (targets.length === 0 || exporting) return;
+    exportTotalRef.current = targets.length;
+    exportDoneRef.current = 0;
+    setExportProgress({ done: 0, total: targets.length });
+    exportBatchRef.current = batch ? batchStamp("visualizations") : null;
+    setExportQueue(targets);
+  };
+
+  const handleCanvasReady = useCallback(
+    async (ok: boolean) => {
+      const current = exportQueue[0];
+      if (!current) return;
+      if (ok && exportWrapRef.current) {
+        try {
+          const blob = await elementToPngBlob(exportWrapRef.current);
+          const baseName = sanitizeFilename(current.name);
+          const filename = exportBatchRef.current
+            ? `${exportBatchRef.current}_${baseName}.png`
+            : `${baseName}.png`;
+          downloadBlob(blob, filename);
+          exportDoneRef.current += 1;
+        } catch {
+          toast.error(`「${current.name}」PNG 导出失败`);
+        }
+      } else {
+        toast.error(`「${current.name}」数据加载失败，已跳过`);
+      }
+      setExportProgress({ done: exportDoneRef.current, total: exportTotalRef.current });
+      const remaining = exportQueue.slice(1);
+      setExportQueue(remaining);
+      if (remaining.length === 0) {
+        const batch = exportBatchRef.current;
+        if (exportDoneRef.current > 0) {
+          if (batch) {
+            toast.success(
+              `已导出 ${exportDoneRef.current} 张 PNG 至下载目录（文件名前缀：${batch}）`,
+            );
+          } else {
+            toast.success(`已导出 ${exportDoneRef.current} 张 PNG`);
+          }
+        }
+        exportBatchRef.current = null;
+        setExportProgress(null);
+      }
+    },
+    [exportQueue],
+  );
+
+  const exportSelected = () => {
+    const targets = sortedRows.filter((v) => selectedIds.has(v.id));
+    exitSelectionMode();
+    beginExport(targets, true);
+  };
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">可视化</h2>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/visualizations/builder", { state: { fresh: true } })}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            新建
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            刷新
-          </Button>
+        <div className="flex items-center gap-2">
+          {exporting && exportProgress && (
+            <span className="text-sm text-muted-foreground">
+              正在导出 {exportProgress.done}/{exportProgress.total}…
+            </span>
+          )}
+          {selectionMode ? (
+            <>
+              <span className="text-sm text-muted-foreground">已选 {selectedIds.size} 项</span>
+              <Button variant="outline" size="sm" onClick={selectAll} disabled={exporting}>
+                全选
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAll}
+                disabled={selectedIds.size === 0 || exporting}
+              >
+                清空
+              </Button>
+              <Button
+                size="sm"
+                onClick={exportSelected}
+                disabled={selectedIds.size === 0 || exporting}
+              >
+                {exporting ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-1 h-4 w-4" />
+                )}
+                导出所选
+              </Button>
+              <Button variant="outline" size="sm" onClick={exitSelectionMode} disabled={exporting}>
+                取消
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/visualizations/builder", { state: { fresh: true } })}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                新建
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={enterSelectionMode}
+                disabled={exporting || !visualizations || visualizations.length === 0}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                批量导出
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+                {refreshing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                刷新
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -270,18 +424,20 @@ export default function VisualizationsListPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {selectionMode && <TableHead className="w-10">选择</TableHead>}
                 <TableHead>缩略图</TableHead>
                 <TableHead>名称</TableHead>
                 <TableHead>图表类型</TableHead>
                 <TableHead>来源视图</TableHead>
                 <TableHead>创建时间</TableHead>
                 <TableHead>更新时间</TableHead>
-                <TableHead className="w-[200px]">操作</TableHead>
+                <TableHead className="w-[260px]">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
+                  {selectionMode && <TableCell />}
                   <TableCell>
                     <Skeleton className="h-24 w-44" />
                   </TableCell>
@@ -336,6 +492,7 @@ export default function VisualizationsListPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {selectionMode && <TableHead className="w-10">选择</TableHead>}
                   <TableHead>缩略图</TableHead>
                   <TableHead>名称</TableHead>
                   <TableHead>图表类型</TableHead>
@@ -358,12 +515,24 @@ export default function VisualizationsListPage() {
                       onSort={handleSort}
                     />
                   </TableHead>
-                  <TableHead className="w-[200px]">操作</TableHead>
+                  <TableHead className="w-[260px]">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pagedRows.map((viz) => (
                   <TableRow key={viz.id}>
+                    {selectionMode && (
+                      <TableCell className="w-10">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${viz.name}`}
+                          checked={selectedIds.has(viz.id)}
+                          onChange={() => toggleSelected(viz.id)}
+                          disabled={exporting}
+                          className="h-4 w-4"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <ThumbnailCell viz={viz} />
                     </TableCell>
@@ -402,6 +571,17 @@ export default function VisualizationsListPage() {
                         >
                           <Pencil className="mr-1 h-4 w-4" />
                           编辑
+                        </Button>
+
+                        {/* 导出 PNG */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => beginExport([viz], false)}
+                          disabled={exporting}
+                        >
+                          <Download className="mr-1 h-4 w-4" />
+                          导出
                         </Button>
 
                         {/* 删除 */}
@@ -481,6 +661,21 @@ export default function VisualizationsListPage() {
         onCancel={() => setDeleteTarget(null)}
         isPending={deleteVisualization.isPending}
       />
+
+      {/* Offscreen export canvas — renders one queued visualization at a time */}
+      <div
+        ref={exportWrapRef}
+        aria-hidden
+        style={{ position: "fixed", top: 0, left: -20000, width: 704 }}
+      >
+        {exportQueue[0] && (
+          <VisualizationExportCanvas
+            key={exportQueue[0].id}
+            viz={exportQueue[0]}
+            onReady={handleCanvasReady}
+          />
+        )}
+      </div>
     </div>
   );
 }
