@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -32,13 +33,13 @@ export interface VisualizationDataResponse {
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 async function fetchVisualizations(): Promise<VisualizationListResponse[]> {
-  const res = await fetch("/api/visualizations");
+  const res = await apiFetch("/api/visualizations");
   if (!res.ok) throw new Error("获取可视化列表失败");
   return res.json();
 }
 
 async function fetchVisualization(id: string): Promise<VisualizationResponse> {
-  const res = await fetch(`/api/visualizations/${id}`);
+  const res = await apiFetch(`/api/visualizations/${id}`);
   if (!res.ok) throw new Error("获取可视化详情失败");
   return res.json();
 }
@@ -49,7 +50,7 @@ async function createVisualization(data: {
   chart_type: string;
   config_json: Record<string, unknown>;
 }): Promise<VisualizationResponse> {
-  const res = await fetch("/api/visualizations", {
+  const res = await apiFetch("/api/visualizations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -70,7 +71,7 @@ async function updateVisualization(
     config_json?: Record<string, unknown>;
   },
 ): Promise<VisualizationResponse> {
-  const res = await fetch(`/api/visualizations/${id}`, {
+  const res = await apiFetch(`/api/visualizations/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -83,7 +84,7 @@ async function updateVisualization(
 }
 
 async function deleteVisualization(id: string): Promise<void> {
-  const res = await fetch(`/api/visualizations/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/visualizations/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "删除可视化失败" }));
     throw new Error(err.detail || "删除可视化失败");
@@ -91,7 +92,7 @@ async function deleteVisualization(id: string): Promise<void> {
 }
 
 async function fetchVisualizationData(id: string): Promise<VisualizationDataResponse> {
-  const res = await fetch(`/api/visualizations/${id}/data`);
+  const res = await apiFetch(`/api/visualizations/${id}/data`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "获取可视化数据失败" }));
     throw new Error(err.detail || "获取可视化数据失败");
@@ -117,7 +118,7 @@ async function fetchVisualizationDataWithParams(
   if (params.granularity) qs.set("granularity", params.granularity);
   if (params.agg) qs.set("agg", params.agg);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
-  const res = await fetch(`/api/visualizations/${id}/data${suffix}`);
+  const res = await apiFetch(`/api/visualizations/${id}/data${suffix}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "获取可视化数据失败" }));
     throw new Error(typeof err.detail === "string" ? err.detail : "获取可视化数据失败");

@@ -85,6 +85,12 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [x] Import history page: table of past imports with status badges and source file type
 - [x] TanStack Query hooks for `POST /api/imports` and `GET /api/imports`
 
+**Extended scope** (redesigned 2026-08-28, delivered as a small standalone change):
+
+- [x] Upload page redesigned into a generic 数据导入 hub — a top panel switches the import method: 上传文件 | 数据抓取 | 导入历史
+- [x] 导入历史 moved from a standalone sidebar page into a tab of the 数据导入 hub (standalone route and nav item removed)
+- [x] 数据抓取 tab rendered as a "coming soon" placeholder (the scraper itself is deferred — see Phase 14)
+
 ---
 
 ## Phase 4.5 — Data Browser
@@ -280,33 +286,22 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 12 — Platform Data Scraping
-
-**Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
-
-> ⚠️ **Dependency:** Details about the platform (API endpoints, page structure, auth) will be provided when we reach this phase.
-
-- [ ] Scraping source configuration: target URL/endpoint, auth credentials, schedule (cron or one-time)
-- [ ] Scraping engine integrated into FastAPI (APScheduler for scheduled runs)
-- [ ] Scraped data flows through the same cleaning pipeline as file imports (Phase 3)
-- [ ] Scrape job tracked as an `ImportJob` — status, rows ingested, errors
-- [ ] Manual "Scrape Now" trigger per source
-- [ ] Scrape history viewable alongside file import history
-
----
-
-## Phase 13 — Auth & Multi-User
+## Phase 12 — Auth & Multi-User
 
 **Goal:** Only authorized team members can access the dashboard.
 
-- [ ] Simple JWT-based auth (FastAPI dependency + React context)
-- [ ] Login page, logout, token refresh
-- [ ] User model (admin seeded manually or via script — no self-registration)
-- [ ] Role-based access: admin (manage sources, trigger scrapes), viewer (dashboard only)
+> Redesigned during spec (2026-08-28): three-level hierarchy (root / admin / user) instead of the original admin/viewer split; full app lockdown with httpOnly-cookie JWT sessions.
+
+- [x] Simple JWT-based auth (FastAPI dependency + React context)
+- [x] Login page, logout, token refresh (httpOnly cookies, 2-hour access + 7-day refresh, silent refresh-and-retry in the API client)
+- [x] User model (root seeded from `.env` via `scripts/seed_root.py` — no self-registration; root immutable via API)
+- [x] Role-based access: root (超级管理员， full rights, creates admins/users), admin (管理员， all operational rights, manages plain users only, never sees root accounts), user (用户， read-only)
+- [x] Hierarchy-enforced user management API + 用户管理 UI (create user / reset password / change role / enable-disable), root account rendered without actions
+- [x] Full lockdown: all API endpoints and pages require authentication; `/api/health` stays public; admin-only nav items and edit/delete actions hidden for L3 users (server-side 403 remains authoritative)
 
 ---
 
-## Phase 14 — Polish & Deploy
+## Phase 13 — Polish & Deploy
 
 **Goal:** Production-ready.
 
@@ -317,3 +312,20 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [ ] Comprehensive error handling and user-friendly error pages
 - [ ] Logging: structured logs (JSON) from FastAPI
 - [ ] README with setup instructions for new developers
+
+---
+
+## Phase 14 — Platform Data Scraping (Future, Post-Deployment)
+
+**Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
+
+> ⚠️ **Deferred:** This phase is a future feature, planned AFTER deployment (Phase 13). The 数据抓取 tab in the 数据导入 page (Phase 4 extended scope) already ships as a "coming soon" placeholder and will become the entry point for this feature.
+
+> ⚠️ **Dependency:** Details about the platform (API endpoints, page structure, auth) will be provided when we reach this phase.
+
+- [ ] Scraping source configuration: target URL/endpoint, auth credentials, schedule (cron or one-time)
+- [ ] Scraping engine integrated into FastAPI (APScheduler for scheduled runs)
+- [ ] Scraped data flows through the same cleaning pipeline as file imports (Phase 3)
+- [ ] Scrape job tracked as an `ImportJob` — status, rows ingested, errors
+- [ ] Manual "Scrape Now" trigger per source
+- [ ] Scrape history viewable alongside file import history (in the 导入历史 tab of the 数据导入 page)

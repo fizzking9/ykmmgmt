@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -93,7 +94,7 @@ interface TableDataResponse {
 // ── API helpers ────────────────────────────────────────────────────────────
 
 async function fetchSchema(tableName: string): Promise<ColumnInfo[]> {
-  const res = await fetch(`/api/tables/${tableName}/schema`);
+  const res = await apiFetch(`/api/tables/${tableName}/schema`);
   if (!res.ok) throw new Error("获取表结构失败");
   return res.json();
 }
@@ -129,7 +130,7 @@ async function fetchData(
   }
   if (sortCol) params.set("sort_col", sortCol);
   if (sortDir) params.set("sort_dir", sortDir);
-  const res = await fetch(`/api/tables/${tableName}/data?${params}`);
+  const res = await apiFetch(`/api/tables/${tableName}/data?${params}`);
   if (!res.ok) throw new Error("获取数据失败");
   return res.json();
 }

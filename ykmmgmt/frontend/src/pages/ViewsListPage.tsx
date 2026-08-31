@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useViews, useViewData, useDeleteView, type ViewListResponse } from "@/hooks/useViews";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   SortableTimeHeader,
   nextSortDir,
@@ -232,6 +233,7 @@ export default function ViewsListPage() {
   const navigate = useNavigate();
   const { data: views, isLoading, isError, error, refetch } = useViews();
   const deleteView = useDeleteView();
+  const { isAdmin } = useAuth();
 
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string>("");
@@ -264,14 +266,16 @@ export default function ViewsListPage() {
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">数据视图</h2>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/views/builder", { state: { fresh: true } })}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            新建
-          </Button>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/views/builder", { state: { fresh: true } })}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              新建
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             刷新
@@ -417,26 +421,30 @@ export default function ViewsListPage() {
                         预览
                       </Button>
 
-                      {/* 编辑 */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/views/builder/${view.id}`)}
-                      >
-                        <Pencil className="mr-1 h-4 w-4" />
-                        编辑
-                      </Button>
+                      {/* 编辑 — admins only (L3 users are read-only) */}
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/views/builder/${view.id}`)}
+                        >
+                          <Pencil className="mr-1 h-4 w-4" />
+                          编辑
+                        </Button>
+                      )}
 
-                      {/* 删除 */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(view)}
-                      >
-                        <Trash2 className="mr-1 h-4 w-4" />
-                        删除
-                      </Button>
+                      {/* 删除 — admins only (L3 users are read-only) */}
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(view)}
+                        >
+                          <Trash2 className="mr-1 h-4 w-4" />
+                          删除
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

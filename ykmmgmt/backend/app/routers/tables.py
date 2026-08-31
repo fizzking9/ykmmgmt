@@ -307,9 +307,7 @@ async def get_table_data(
                     pattern = f"%{value}"
                 # LIKE only works on text — cast non-text columns so the
                 # filter degrades gracefully instead of erroring
-                like_col = (
-                    cast(col, String) if _is_numeric_column(col) or _is_temporal_column(col) else col
-                )
+                like_col = cast(col, String) if _is_numeric_column(col) or _is_temporal_column(col) else col
                 count_stmt = count_stmt.where(like_col.like(pattern))
                 data_stmt = data_stmt.where(like_col.like(pattern))
                 continue

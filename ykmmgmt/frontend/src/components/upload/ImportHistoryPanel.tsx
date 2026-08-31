@@ -81,7 +81,8 @@ function LoadingSkeleton() {
   ));
 }
 
-export default function ImportHistoryPage() {
+/** 导入历史 tab panel of the 数据导入 page. */
+export function ImportHistoryPanel() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const { data, isLoading, isError, error, refetch } = useImportHistory(page, pageSize);
@@ -90,8 +91,7 @@ export default function ImportHistoryPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">导入历史</h2>
+      <div className="mb-6 flex items-center justify-end">
         <Button variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新

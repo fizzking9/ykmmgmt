@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useViews } from "@/hooks/useViews";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   useVisualizations,
   useVisualizationData,
@@ -185,6 +186,7 @@ export default function VisualizationsListPage() {
   } = useVisualizations();
   const { data: views } = useViews();
   const deleteVisualization = useDeleteVisualization();
+  const { isAdmin } = useAuth();
 
   const [page, setPage] = useState(1);
   const [sortCol, setSortCol] = useState<TimeSortCol>("created_at");
@@ -376,14 +378,16 @@ export default function VisualizationsListPage() {
             </>
           ) : (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate("/visualizations/builder", { state: { fresh: true } })}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                新建
-              </Button>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate("/visualizations/builder", { state: { fresh: true } })}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  新建
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -563,15 +567,17 @@ export default function VisualizationsListPage() {
                           查看
                         </Button>
 
-                        {/* 编辑 */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/visualizations/builder/${viz.id}`)}
-                        >
-                          <Pencil className="mr-1 h-4 w-4" />
-                          编辑
-                        </Button>
+                        {/* 编辑 — admins only (L3 users are read-only) */}
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/visualizations/builder/${viz.id}`)}
+                          >
+                            <Pencil className="mr-1 h-4 w-4" />
+                            编辑
+                          </Button>
+                        )}
 
                         {/* 导出 PNG */}
                         <Button
@@ -584,16 +590,18 @@ export default function VisualizationsListPage() {
                           导出
                         </Button>
 
-                        {/* 删除 */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(viz)}
-                        >
-                          <Trash2 className="mr-1 h-4 w-4" />
-                          删除
-                        </Button>
+                        {/* 删除 — admins only (L3 users are read-only) */}
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setDeleteTarget(viz)}
+                          >
+                            <Trash2 className="mr-1 h-4 w-4" />
+                            删除
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

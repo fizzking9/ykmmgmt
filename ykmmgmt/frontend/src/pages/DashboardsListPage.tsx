@@ -18,6 +18,7 @@ import {
   type DashboardListResponse,
 } from "@/hooks/useDashboards";
 import { useDashboardBuilderContext } from "@/contexts/DashboardBuilderContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { DashboardExportCanvas } from "@/components/dashboard/DashboardExportCanvas";
 import { downloadBlob, elementToPngBlob, batchStamp, sanitizeFilename } from "@/lib/exportPng";
 import {
@@ -153,6 +154,7 @@ function DeleteConfirmDialog({
 export default function DashboardsListPage() {
   const navigate = useNavigate();
   const builder = useDashboardBuilderContext();
+  const { isAdmin } = useAuth();
 
   const { data: dashboards, isLoading, isError, error, refetch, isRefetching } = useDashboards();
 
@@ -338,10 +340,12 @@ export default function DashboardsListPage() {
             </>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={handleCreate}>
-                <Plus className="mr-2 h-4 w-4" />
-                新建看板
-              </Button>
+              {isAdmin && (
+                <Button variant="outline" size="sm" onClick={handleCreate}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  新建看板
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -503,37 +507,41 @@ export default function DashboardsListPage() {
                           <Eye className="mr-1 h-4 w-4" />
                           查看
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/dashboards/builder/${dash.id}`)}
-                        >
-                          <Pencil className="mr-1 h-4 w-4" />
-                          编辑
-                        </Button>
-                        {/* 导出 PNG */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => beginExport([dash], false)}
-                          disabled={exporting}
-                        >
-                          <Download className="mr-1 h-4 w-4" />
-                          导出
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setRenameTarget(dash)}>
-                          <SpellCheck className="mr-1 h-4 w-4" />
-                          重命名
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(dash)}
-                        >
-                          <Trash2 className="mr-1 h-4 w-4" />
-                          删除
-                        </Button>
+                        {isAdmin && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/dashboards/builder/${dash.id}`)}
+                            >
+                              <Pencil className="mr-1 h-4 w-4" />
+                              编辑
+                            </Button>
+                            {/* 导出 PNG */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => beginExport([dash], false)}
+                              disabled={exporting}
+                            >
+                              <Download className="mr-1 h-4 w-4" />
+                              导出
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setRenameTarget(dash)}>
+                              <SpellCheck className="mr-1 h-4 w-4" />
+                              重命名
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setDeleteTarget(dash)}
+                            >
+                              <Trash2 className="mr-1 h-4 w-4" />
+                              删除
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

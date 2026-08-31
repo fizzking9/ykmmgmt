@@ -9,6 +9,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import require_admin
+from app.models.user import User
 from app.models.view import View
 from app.models.visualization import Visualization
 from app.routers.views import _build_sql_from_config
@@ -81,7 +83,11 @@ async def get_visualization(viz_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
 
 @router.post("/visualizations", response_model=VisualizationResponse, status_code=201)
-async def create_visualization(body: VisualizationCreate, db: AsyncSession = Depends(get_db)):
+async def create_visualization(
+    body: VisualizationCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     """Create a new visualization."""
     await _validate_view_exists(body.view_id, db)
     _validate_chart_config(body.chart_type, body.config_json)
@@ -111,6 +117,7 @@ async def update_visualization(
     viz_id: uuid.UUID,
     body: VisualizationUpdate,
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
 ):
     """Update an existing visualization."""
     stmt = select(Visualization).where(Visualization.id == viz_id)
@@ -142,7 +149,11 @@ async def update_visualization(
 
 
 @router.delete("/visualizations/{viz_id}", status_code=204)
-async def delete_visualization(viz_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def delete_visualization(
+    viz_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     """Permanently delete a visualization."""
     stmt = select(Visualization).where(Visualization.id == viz_id)
     result = await db.execute(stmt)
@@ -384,11 +395,7 @@ async def get_visualization_data(
         if start or end:
             start_dt = _parse_iso_datetime(start, "起始时间") if start else None
             end_dt = _parse_iso_datetime(end, "结束时间") if end else None
-            rows = [
-                r
-                for r in rows
-                if _in_date_range(r.get(date_column), start_dt, end_dt)
-            ]
+            rows = [r for r in rows if _in_date_range(r.get(date_column), start_dt, end_dt)]
         if granularity:
             columns, rows = _rebucket_rows(rows, date_column, granularity, agg or "SUM")
 

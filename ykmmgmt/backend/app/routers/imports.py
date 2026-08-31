@@ -8,7 +8,9 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import require_admin
 from app.models import DataSource, ImportJob
+from app.models.user import User
 from app.services.import_service import ImportError, ImportService
 from app.services.schema_validator import (
     get_chinese_table_name,
@@ -23,6 +25,7 @@ async def upload_file(
     file: UploadFile = File(...),
     target_table: str = Form(...),
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
 ):
     """Upload a CSV or Excel file for import.
 

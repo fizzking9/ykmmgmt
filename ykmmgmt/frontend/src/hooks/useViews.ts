@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -110,13 +111,13 @@ export interface ColumnInfo {
 // ── API helpers ────────────────────────────────────────────────────────────
 
 async function fetchViews(): Promise<ViewListResponse[]> {
-  const res = await fetch("/api/views");
+  const res = await apiFetch("/api/views");
   if (!res.ok) throw new Error("获取视图列表失败");
   return res.json();
 }
 
 async function fetchView(id: string): Promise<ViewResponse> {
-  const res = await fetch(`/api/views/${id}`);
+  const res = await apiFetch(`/api/views/${id}`);
   if (!res.ok) throw new Error("获取视图详情失败");
   return res.json();
 }
@@ -126,7 +127,7 @@ async function createView(data: {
   description?: string | null;
   config_json: ViewConfig;
 }): Promise<ViewResponse> {
-  const res = await fetch("/api/views", {
+  const res = await apiFetch("/api/views", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -146,7 +147,7 @@ async function updateView(
     config_json?: ViewConfig;
   },
 ): Promise<ViewResponse> {
-  const res = await fetch(`/api/views/${id}`, {
+  const res = await apiFetch(`/api/views/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -159,7 +160,7 @@ async function updateView(
 }
 
 async function previewView(config: ViewConfig): Promise<PreviewResponse> {
-  const res = await fetch("/api/views/preview", {
+  const res = await apiFetch("/api/views/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ config_json: config }),
@@ -172,7 +173,7 @@ async function previewView(config: ViewConfig): Promise<PreviewResponse> {
 }
 
 async function deleteView(id: string): Promise<void> {
-  const res = await fetch(`/api/views/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/views/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "删除视图失败" }));
     throw new Error(err.detail || "删除视图失败");
@@ -181,7 +182,7 @@ async function deleteView(id: string): Promise<void> {
 
 async function fetchViewData(id: string, page: number, size: number): Promise<ViewDataResponse> {
   const params = new URLSearchParams({ page: String(page), size: String(size) });
-  const res = await fetch(`/api/views/${id}/data?${params}`);
+  const res = await apiFetch(`/api/views/${id}/data?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "获取视图数据失败" }));
     throw new Error(err.detail || "获取视图数据失败");
@@ -191,7 +192,7 @@ async function fetchViewData(id: string, page: number, size: number): Promise<Vi
 
 export async function fetchViewFullData(id: string): Promise<ViewDataResponse> {
   const params = new URLSearchParams({ page: "1", size: "0" });
-  const res = await fetch(`/api/views/${id}/data?${params}`);
+  const res = await apiFetch(`/api/views/${id}/data?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "获取视图数据失败" }));
     throw new Error(err.detail || "获取视图数据失败");
@@ -200,7 +201,7 @@ export async function fetchViewFullData(id: string): Promise<ViewDataResponse> {
 }
 
 async function fetchTableSchema(tableName: string): Promise<ColumnInfo[]> {
-  const res = await fetch(`/api/tables/${tableName}/schema`);
+  const res = await apiFetch(`/api/tables/${tableName}/schema`);
   if (!res.ok) throw new Error("获取表结构失败");
   return res.json();
 }
