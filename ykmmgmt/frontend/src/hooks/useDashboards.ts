@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { fetchViewFullData, type ViewDataResponse } from "@/hooks/useViews";
@@ -53,19 +54,19 @@ export interface DashboardPayload {
 // ── API helpers ─────────────────────────────────────────────────────────────
 
 async function fetchDashboards(): Promise<DashboardListResponse[]> {
-  const res = await fetch("/api/dashboards");
+  const res = await apiFetch("/api/dashboards");
   if (!res.ok) throw new Error("获取仪表盘列表失败");
   return res.json();
 }
 
 async function fetchDashboard(id: string): Promise<DashboardResponse> {
-  const res = await fetch(`/api/dashboards/${id}`);
+  const res = await apiFetch(`/api/dashboards/${id}`);
   if (!res.ok) throw new Error("获取仪表盘详情失败");
   return res.json();
 }
 
 async function createDashboard(data: DashboardPayload): Promise<DashboardResponse> {
-  const res = await fetch("/api/dashboards", {
+  const res = await apiFetch("/api/dashboards", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -81,7 +82,7 @@ async function updateDashboard(
   id: string,
   data: Partial<DashboardPayload>,
 ): Promise<DashboardResponse> {
-  const res = await fetch(`/api/dashboards/${id}`, {
+  const res = await apiFetch(`/api/dashboards/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -94,7 +95,7 @@ async function updateDashboard(
 }
 
 async function deleteDashboard(id: string): Promise<void> {
-  const res = await fetch(`/api/dashboards/${id}`, { method: "DELETE" });
+  const res = await apiFetch(`/api/dashboards/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "删除仪表盘失败" }));
     throw new Error(typeof err.detail === "string" ? err.detail : "删除仪表盘失败");

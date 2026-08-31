@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -138,38 +139,38 @@ async function parseError(res: Response, fallback: string): Promise<Error> {
 }
 
 async function fetchSchemaTables(): Promise<SchemaTableInfo[]> {
-  const res = await fetch("/api/schema/tables");
+  const res = await apiFetch("/api/schema/tables");
   if (!res.ok) throw await parseError(res, "获取数据表列表失败");
   return res.json();
 }
 
 async function fetchSchemaTableDetail(name: string): Promise<SchemaTableDetail> {
-  const res = await fetch(`/api/schema/tables/${name}`);
+  const res = await apiFetch(`/api/schema/tables/${name}`);
   if (!res.ok) throw await parseError(res, "获取表结构失败");
   return res.json();
 }
 
 async function fetchColumnTypes(): Promise<ColumnTypeInfo[]> {
-  const res = await fetch("/api/schema/column-types");
+  const res = await apiFetch("/api/schema/column-types");
   if (!res.ok) throw await parseError(res, "获取列类型失败");
   return res.json();
 }
 
 async function fetchDependencies(name: string, column?: string): Promise<DependencyInfo> {
   const params = column ? `?column=${encodeURIComponent(column)}` : "";
-  const res = await fetch(`/api/schema/tables/${name}/dependencies${params}`);
+  const res = await apiFetch(`/api/schema/tables/${name}/dependencies${params}`);
   if (!res.ok) throw await parseError(res, "获取依赖信息失败");
   return res.json();
 }
 
 async function fetchFkOptions(): Promise<FkTableOption[]> {
-  const res = await fetch("/api/schema/fk-options");
+  const res = await apiFetch("/api/schema/fk-options");
   if (!res.ok) throw await parseError(res, "获取外键选项失败");
   return res.json();
 }
 
 async function createTable(payload: CreateTablePayload): Promise<SchemaTableDetail> {
-  const res = await fetch("/api/schema/tables", {
+  const res = await apiFetch("/api/schema/tables", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -181,13 +182,13 @@ async function createTable(payload: CreateTablePayload): Promise<SchemaTableDeta
 async function inferFromCsv(file: File): Promise<InferCsvResponse> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch("/api/schema/infer-from-csv", { method: "POST", body: form });
+  const res = await apiFetch("/api/schema/infer-from-csv", { method: "POST", body: form });
   if (!res.ok) throw await parseError(res, "CSV 结构推断失败");
   return res.json();
 }
 
 async function addColumn(table: string, col: ColumnDefinitionPayload): Promise<SchemaTableDetail> {
-  const res = await fetch(`/api/schema/tables/${table}/columns`, {
+  const res = await apiFetch(`/api/schema/tables/${table}/columns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(col),
@@ -200,7 +201,7 @@ async function dropColumn(
   table: string,
   column: string,
 ): Promise<{ deleted_column: string; dependencies: DependencyInfo }> {
-  const res = await fetch(`/api/schema/tables/${table}/columns/${column}`, {
+  const res = await apiFetch(`/api/schema/tables/${table}/columns/${column}`, {
     method: "DELETE",
   });
   if (!res.ok) throw await parseError(res, "删除列失败");
@@ -212,7 +213,7 @@ async function modifyColumn(
   column: string,
   payload: ModifyColumnPayload,
 ): Promise<{ modified_column: string; warning: string | null }> {
-  const res = await fetch(`/api/schema/tables/${table}/columns/${column}`, {
+  const res = await apiFetch(`/api/schema/tables/${table}/columns/${column}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -222,7 +223,7 @@ async function modifyColumn(
 }
 
 async function renameTable(table: string, payload: RenameTablePayload): Promise<SchemaTableDetail> {
-  const res = await fetch(`/api/schema/tables/${table}`, {
+  const res = await apiFetch(`/api/schema/tables/${table}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -235,7 +236,7 @@ async function deleteTable(
   table: string,
   confirm: boolean,
 ): Promise<{ deleted: string; dependencies: DependencyInfo }> {
-  const res = await fetch(`/api/schema/tables/${table}?confirm=${confirm}`, {
+  const res = await apiFetch(`/api/schema/tables/${table}?confirm=${confirm}`, {
     method: "DELETE",
   });
   if (!res.ok) throw await parseError(res, "删除数据表失败");

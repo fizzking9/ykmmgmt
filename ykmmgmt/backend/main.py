@@ -7,10 +7,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import engine, get_db
+from app.core.security import get_current_user, require_admin
+from app.routers.auth import router as auth_router
 from app.routers.dashboards import router as dashboards_router
 from app.routers.imports import router as imports_router
 from app.routers.schema import router as schema_router
 from app.routers.tables import router as tables_router
+from app.routers.users import router as users_router
 from app.routers.views import router as views_router
 from app.routers.visualizations import router as visualizations_router
 from app.services.schema_manager import SchemaManagerError
@@ -19,13 +22,19 @@ logger = logging.getLogger("ykmmgmt")
 
 app = FastAPI(title="YKMMgmt", version="0.1.0")
 
-# Include routers
-app.include_router(imports_router)
-app.include_router(tables_router)
-app.include_router(schema_router)
-app.include_router(views_router)
-app.include_router(visualizations_router)
-app.include_router(dashboards_router)
+# Include routers — public (no auth) first, then locked-down ones.
+# Router-level: every endpoint needs a valid session. Mutating endpoints
+# additionally apply require_admin inside their routers (see plan Group 3).
+app.include_router(auth_router)
+app.include_router(imports_router, dependencies=[Depends(get_current_user)])
+app.include_router(tables_router, dependencies=[Depends(get_current_user)])
+# All schema management is admin-only (reads included — the schema
+# surface itself is an administrative concern)
+app.include_router(schema_router, dependencies=[Depends(require_admin)])
+app.include_router(views_router, dependencies=[Depends(get_current_user)])
+app.include_router(visualizations_router, dependencies=[Depends(get_current_user)])
+app.include_router(dashboards_router, dependencies=[Depends(get_current_user)])
+app.include_router(users_router)
 
 # CORS — allow frontend dev server and localhost origins
 app.add_middleware(

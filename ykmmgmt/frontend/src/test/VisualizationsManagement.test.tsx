@@ -4,6 +4,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import VisualizationsListPage from "@/pages/VisualizationsListPage";
 
+// Auth: pages read the current role via useAuth — inject an admin session
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    user: { id: 1, username: "admin", role: "admin" },
+    loading: false,
+    isAdmin: true,
+    isRoot: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    setUser: vi.fn(),
+  }),
+}));
+
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
 const BAR_VIZ = {

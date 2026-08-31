@@ -35,14 +35,17 @@ pip install -r requirements.txt
 # Run database migrations
 alembic upgrade head
 
-# (Optional) Seed sample data
-python seed.py
+# Seed the initial root (super admin) account — idempotent, safe to re-run
+python -m scripts.seed_root
 
 # Start dev server
 uvicorn main:app --reload --port 8000
 ```
 
 Backend runs at **http://localhost:8000** with auto-generated docs at `/docs`.
+
+> **Auth required:** all API endpoints (except `/api/health`) require a logged-in
+> session — see [Authentication & User Management](#authentication--user-management).
 
 ### 3. Frontend
 
@@ -71,8 +74,45 @@ Open **http://localhost:5173** in a browser — you should see the backend healt
 ## Database
 
 - **Migrations:** Run `alembic upgrade head` to apply all migrations. Generate new ones with `alembic revision --autogenerate -m "description"`.
-- **Seed data:** `python seed.py` loads the first 20 rows from each sample CSV file.
 - **Environment:** Copy `.env.example` to `.env` and adjust `DATABASE_URL` as needed.
+
+## Authentication & User Management（认证与用户管理）
+
+The app requires login — every page and API endpoint (except `GET /api/health`)
+rejects unauthenticated requests.
+
+### Setup
+
+1. Copy `.env.example` to `.env` and set:
+
+   | Variable | Purpose |
+   |----------|---------|
+   | `SECRET_KEY` | JWT signing key — use a long random string in production |
+   | `ROOT_USERNAME` | Username for the initial root account |
+   | `ROOT_PASSWORD` | Password for the initial root account |
+
+2. Create the root account (idempotent — re-running skips if a root exists):
+
+   ```bash
+   cd ykmmgmt/backend
+   python -m scripts.seed_root
+   ```
+
+3. Start both servers and log in at http://localhost:5173 with the root credentials.
+
+### Role Hierarchy
+
+| Role | Chinese | Rights |
+|------|---------|--------|
+| `root` | 超级管理员 | Everything; creates admins and users. Immutable via the API (cannot be deactivated or demoted); never assignable through the API |
+| `admin` | 管理员 | All operational rights (data imports, schema management, all create/edit/delete); can create and manage plain users only — cannot see root accounts or touch other admins |
+| `user` | 用户 | Read-only: browse data, views, visualizations, dashboards |
+
+- Sessions use httpOnly cookies (2-hour access token + 7-day refresh token); the
+  frontend silently refreshes an expired session and only redirects to the login
+  page when the refresh token is gone.
+- Manage accounts in the app under **用户管理**（ root and admin only）: create users,
+  reset passwords, change roles, enable/disable accounts.
 
 ## Import API
 

@@ -3,6 +3,7 @@ from app.models.dashboard import Dashboard
 from app.models.datasource import DataSource
 from app.models.import_job import ImportJob
 from app.models.table_meta import TableMeta
+from app.models.user import User
 from app.models.view import View
 from app.models.visualization import Visualization
 
@@ -12,6 +13,7 @@ __all__ = [
     "DataSource",
     "ImportJob",
     "TableMeta",
+    "User",
     "View",
     "Visualization",
 ]

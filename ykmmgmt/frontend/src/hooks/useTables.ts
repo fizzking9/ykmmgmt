@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 
 export interface TableOption {
@@ -6,7 +7,7 @@ export interface TableOption {
 }
 
 async function fetchTables(): Promise<TableOption[]> {
-  const res = await fetch("/api/tables");
+  const res = await apiFetch("/api/tables");
   if (!res.ok) throw new Error("获取数据表列表失败");
   return res.json();
 }

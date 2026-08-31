@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 
 export interface ImportJobItem {
@@ -25,7 +26,7 @@ async function fetchImportHistory(page: number, pageSize: number): Promise<Impor
     page: String(page),
     page_size: String(pageSize),
   });
-  const res = await fetch(`/api/imports?${params}`);
+  const res = await apiFetch(`/api/imports?${params}`);
   if (!res.ok) throw new Error("获取导入历史失败");
   return res.json();
 }

@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useMutation } from "@tanstack/react-query";
 
 export interface UploadResult {
@@ -23,7 +24,7 @@ async function uploadFile(file: File, targetTable: string): Promise<UploadResult
   formData.append("file", file);
   formData.append("target_table", targetTable);
 
-  const res = await fetch("/api/imports", {
+  const res = await apiFetch("/api/imports", {
     method: "POST",
     body: formData,
   });

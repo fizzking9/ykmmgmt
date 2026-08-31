@@ -22,9 +22,7 @@ class JoinSpec(BaseModel):
 
     left_table: str
     right_table: str
-    right_alias: str | None = Field(
-        None, description="Alias for right_table (used for self-joins, e.g. orders_1)"
-    )
+    right_alias: str | None = Field(None, description="Alias for right_table (used for self-joins, e.g. orders_1)")
     join_type: str = Field("INNER", description="INNER, LEFT, or RIGHT")
     left_key: str
     right_key: str

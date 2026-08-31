@@ -1,26 +1,28 @@
-import { NavLink, Link, useLocation } from "react-router-dom";
+import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { useDashboards } from "@/hooks/useDashboards";
+import { useAuth, ROLE_LABELS } from "@/contexts/AuthContext";
 import {
   Upload,
-  History,
   ChevronDown,
   Database,
   BarChart3,
   Eye,
   LayoutGrid,
   LayoutDashboard,
+  LogOut,
   PieChart,
   Plus,
   Table2,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 
 interface NavGroup {
   title: string;
   icon: React.ReactNode;
-  links: { to: string; label: string; icon: React.ReactNode }[];
+  links: { to: string; label: string; icon: React.ReactNode; adminOnly?: boolean }[];
 }
 
 const groups: NavGroup[] = [
@@ -28,11 +30,10 @@ const groups: NavGroup[] = [
     title: "数据管理",
     icon: <Upload className="h-4 w-4" />,
     links: [
-      { to: "/upload", label: "上传数据", icon: <Upload className="h-4 w-4" /> },
+      { to: "/upload", label: "数据导入", icon: <Upload className="h-4 w-4" />, adminOnly: true },
       { to: "/data-browser", label: "数据浏览", icon: <Database className="h-4 w-4" /> },
-      { to: "/imports", label: "导入历史", icon: <History className="h-4 w-4" /> },
-      { to: "/schema", label: "数据表管理", icon: <Table2 className="h-4 w-4" /> },
-      { to: "/schema/create", label: "新建数据表", icon: <Plus className="h-4 w-4" /> },
+      { to: "/schema", label: "数据表管理", icon: <Table2 className="h-4 w-4" />, adminOnly: true },
+      { to: "/schema/create", label: "新建数据表", icon: <Plus className="h-4 w-4" />, adminOnly: true },
     ],
   },
   {
@@ -41,11 +42,12 @@ const groups: NavGroup[] = [
     links: [
       { to: "/views", label: "数据视图", icon: <LayoutGrid className="h-4 w-4" /> },
       { to: "/visualizations", label: "可视化", icon: <BarChart3 className="h-4 w-4" /> },
-      { to: "/views/builder", label: "视图创建", icon: <Eye className="h-4 w-4" /> },
+      { to: "/views/builder", label: "视图创建", icon: <Eye className="h-4 w-4" />, adminOnly: true },
       {
         to: "/visualizations/builder",
         label: "可视化构建",
         icon: <PieChart className="h-4 w-4" />,
+        adminOnly: true,
       },
     ],
   },
@@ -53,8 +55,10 @@ const groups: NavGroup[] = [
 
 export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const { data: dashboards } = useDashboards();
+  const { user, isAdmin, logout } = useAuth();
 
   const toggleGroup = (title: string) => {
     setOpenGroups((prev) => ({ ...prev, [title]: !prev[title] }));
@@ -87,8 +91,14 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
 
   const dashboardsOpen = openGroups["数据看板"] ?? isDashboardsParentActive;
 
+  async function handleLogout() {
+    await logout();
+    onNavClick?.();
+    navigate("/login", { replace: true });
+  }
+
   return (
-    <nav className="flex flex-col gap-2 p-4">
+    <nav className="flex h-full flex-col gap-2 p-4">
       {/* App title */}
       <Link to="/" className="mb-4 block px-2">
         <h1 className="text-lg font-semibold tracking-tight">云客猫管理平台</h1>
@@ -96,6 +106,10 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
 
       {/* Nav groups */}
       {groups.map((group) => {
+        // Hide a whole group when every link is admin-only and the user is L3
+        const visibleLinks = group.links.filter((link) => !link.adminOnly || isAdmin);
+        if (visibleLinks.length === 0) return null;
+
         const isOpen = openGroups[group.title] ?? false;
         const active = isActiveGroup(group);
 
@@ -121,7 +135,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
               />
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-1 pl-7 pt-1">
-              {group.links.map((link) => (
+              {visibleLinks.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
@@ -197,21 +211,23 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
             <LayoutGrid className="h-4 w-4" />
             看板列表
           </NavLink>
-          <NavLink
-            to="/dashboards/builder"
-            onClick={onNavClick}
-            className={() =>
-              cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
-                location.pathname.startsWith("/dashboards/builder")
-                  ? "bg-muted font-medium text-primary"
-                  : "text-muted-foreground",
-              )
-            }
-          >
-            <Plus className="h-4 w-4" />
-            看板创建
-          </NavLink>
+          {isAdmin && (
+            <NavLink
+              to="/dashboards/builder"
+              onClick={onNavClick}
+              className={() =>
+                cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted",
+                  location.pathname.startsWith("/dashboards/builder")
+                    ? "bg-muted font-medium text-primary"
+                    : "text-muted-foreground",
+                )
+              }
+            >
+              <Plus className="h-4 w-4" />
+              看板创建
+            </NavLink>
+          )}
           {(dashboards ?? []).map((dash) => (
             <NavLink
               key={dash.id}
@@ -233,6 +249,48 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
           ))}
         </CollapsibleContent>
       </Collapsible>
+
+      {/* 用户管理 — admin and root only */}
+      {isAdmin && (
+        <NavLink
+          to="/users"
+          onClick={onNavClick}
+          className={() =>
+            cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted",
+              location.pathname.startsWith("/users")
+                ? "bg-muted text-primary"
+                : "text-muted-foreground",
+            )
+          }
+        >
+          <Users className="h-4 w-4" />
+          用户管理
+        </NavLink>
+      )}
+
+      {/* Current user + logout — pinned to the bottom */}
+      {user && (
+        <div className="mt-auto border-t pt-3">
+          <div className="mb-2 flex items-center gap-2 px-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+              {user.username.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{user.username}</p>
+              <p className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+            退出登录
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

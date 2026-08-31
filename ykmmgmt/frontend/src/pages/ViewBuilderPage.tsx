@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
@@ -55,7 +56,7 @@ import {
 // ── API helpers ────────────────────────────────────────────────────────────
 
 async function fetchTableSchema(tableName: string): Promise<ColumnInfo[]> {
-  const res = await fetch(`/api/tables/${tableName}/schema`);
+  const res = await apiFetch(`/api/tables/${tableName}/schema`);
   if (!res.ok) throw new Error("获取表结构失败");
   return res.json();
 }

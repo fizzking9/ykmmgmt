@@ -7,7 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import require_admin
 from app.models.dashboard import Dashboard
+from app.models.user import User
 from app.models.view import View
 from app.models.visualization import Visualization
 from app.schemas.dashboard import (
@@ -121,7 +123,11 @@ async def get_dashboard(dashboard_id: uuid.UUID, db: AsyncSession = Depends(get_
 
 
 @router.post("/dashboards", response_model=DashboardResponse, status_code=201)
-async def create_dashboard(body: DashboardCreate, db: AsyncSession = Depends(get_db)):
+async def create_dashboard(
+    body: DashboardCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     """Create a new dashboard."""
     await _check_name_conflict(body.name, db)
     await _validate_tile_references(body.layout_json, db)
@@ -152,6 +158,7 @@ async def update_dashboard(
     dashboard_id: uuid.UUID,
     body: DashboardUpdate,
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
 ):
     """Update an existing dashboard's name/description/layout."""
     stmt = select(Dashboard).where(Dashboard.id == dashboard_id)
@@ -187,7 +194,11 @@ async def update_dashboard(
 
 
 @router.delete("/dashboards/{dashboard_id}", status_code=204)
-async def delete_dashboard(dashboard_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def delete_dashboard(
+    dashboard_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     """Permanently delete a dashboard."""
     stmt = select(Dashboard).where(Dashboard.id == dashboard_id)
     result = await db.execute(stmt)

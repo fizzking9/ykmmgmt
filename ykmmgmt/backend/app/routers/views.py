@@ -7,6 +7,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import require_admin
+from app.models.user import User
 from app.models.view import View
 from app.schemas.view import (
     PreviewRequest,
@@ -80,7 +82,11 @@ async def get_view(view_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/views", response_model=ViewResponse, status_code=201)
-async def create_view(body: ViewCreate, db: AsyncSession = Depends(get_db)):
+async def create_view(
+    body: ViewCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     """Create a new view.
 
     Validates the config against the actual table schema, generates
@@ -125,6 +131,7 @@ async def update_view(
     view_id: uuid.UUID,
     body: ViewUpdate,
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
 ):
     """Update an existing view.
 
@@ -166,7 +173,11 @@ async def update_view(
 
 
 @router.delete("/views/{view_id}", status_code=204)
-async def delete_view(view_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def delete_view(
+    view_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     """Permanently delete a view."""
     stmt = select(View).where(View.id == view_id)
     result = await db.execute(stmt)
@@ -282,7 +293,11 @@ async def get_view_data(
 
 
 @router.post("/views/preview", response_model=PreviewResponse)
-async def preview_view(body: PreviewRequest, db: AsyncSession = Depends(get_db)):
+async def preview_view(
+    body: PreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     """Generate SQL from config and execute with LIMIT 20.
 
     Does NOT store anything — purely transient preview.

@@ -11,6 +11,19 @@ import {
   useDashboardBuilderContext,
 } from "@/contexts/DashboardBuilderContext";
 
+// Auth: pages read the current role via useAuth — inject an admin session
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    user: { id: 1, username: "admin", role: "admin" },
+    loading: false,
+    isAdmin: true,
+    isRoot: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    setUser: vi.fn(),
+  }),
+}));
+
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
 const DASH_1 = {
