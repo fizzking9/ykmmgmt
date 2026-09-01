@@ -39,9 +39,10 @@ Data from external sources (CSVs, APIs) is **normalized and stored** in PostgreS
 
 | Layer | Choice |
 |-------|--------|
-| **Containerization** | Docker + Docker Compose |
-| **Reverse proxy** | Nginx (production) |
-| **CI** | GitHub Actions (lint, type-check, test) |
+| **Containerization** | Docker + Docker Compose (production stack runs on the local machine) |
+| **Reverse proxy (local)** | Nginx — serves the React SPA and proxies `/api` to FastAPI |
+| **Public entry / tunnel** | frp tunnel (frps on Alibaba Cloud ECS, frpc on the local machine) + Nginx on the cloud server as the stateless public reverse-proxy entry |
+| **CI/CD** | GitHub Actions — lint, test, build Docker images, push to a container registry (GHCR or Alibaba ACR); the local machine pulls new images and restarts |
 | **Version control** | Git |
 
 ## Key Architectural Decisions
@@ -49,3 +50,4 @@ Data from external sources (CSVs, APIs) is **normalized and stored** in PostgreS
 1. **Backend-first API design** — the FastAPI backend is the single source of truth. The React frontend is a read/trigger client only.
 2. **Import pipeline pattern** — each external source type (CSV, API, spreadsheet) has a dedicated import handler. Imports run synchronously for ad-hoc uploads and asynchronously (scheduled) for recurring pulls.
 3. **Metric normalization** — raw imported data is transformed into a unified metric schema before hitting the dashboard, so charts and cards don't need source-specific logic.
+4. **Deployment topology** — the full stack (backend, frontend, PostgreSQL) runs in Docker on the local machine. The Alibaba Cloud server is a stateless public entry point only: its Nginx reverse-proxies traffic through an frp tunnel to the local machine, and it is configured once (no per-release deployments to the cloud). CI builds and pushes Docker images; the local machine pulls and restarts for fast iteration.
