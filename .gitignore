@@ -36,6 +36,9 @@ deploy/frpc.toml
 # Database backups (scripts/backup-db.ps1)
 backups/
 
+# Container file logs (logs/backend, logs/db, logs/frpc)
+logs/
+
 # Build
 *.log
 

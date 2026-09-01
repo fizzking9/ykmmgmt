@@ -28,12 +28,31 @@ services:
     container_name: ykmmgmt-prod-db
     restart: unless-stopped
     logging: *default-logging
+    # File-based logs on the host (logs/db/): daily files, truncated on reuse,
+    # plus slow-query logging (statements over 500 ms)
+    command:
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
+      - log_directory=/var/log/postgresql
+      - -c
+      - log_filename=postgresql-%Y-%m-%d.log
+      - -c
+      - log_rotation_age=1d
+      - -c
+      - log_rotation_size=20MB
+      - -c
+      - log_truncate_on_rotation=on
+      - -c
+      - log_min_duration_statement=500
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+      - ./logs/db:/var/log/postgresql
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ykmmgmt}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in deploy/.env.prod}
       POSTGRES_DB: ${POSTGRES_DB:-ykmmgmt}
-    volumes:
-      - pgdata_prod:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ykmmgmt} -d ${POSTGRES_DB:-ykmmgmt}"]
       interval: 5s
@@ -54,6 +73,9 @@ services:
       ROOT_USERNAME: ${ROOT_USERNAME:-}
       ROOT_PASSWORD: ${ROOT_PASSWORD:-}
       LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_FILE: /logs/app.log
+    volumes:
+      - ./logs/backend:/logs
     depends_on:
       db:
         condition: service_healthy
@@ -80,6 +102,7 @@ services:
     logging: *default-logging
     volumes:
       - ./deploy/frpc.toml:/etc/frp/frpc.toml:ro
+      - ./logs/frpc:/logs
     depends_on:
       - frontend
     networks:

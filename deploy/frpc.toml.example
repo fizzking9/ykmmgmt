@@ -10,6 +10,11 @@ auth.token = "<FRP_TOKEN>"
 # the server are reachable (survives security-group changes and reboots).
 loginFailExit = false
 
+# File-based logs on the host (logs/frpc/), rotated daily, 7 days kept
+log.to = "/logs/frpc.log"
+log.level = "info"
+log.maxDays = 7
+
 # Encrypt the tunnel itself (frpc ↔ frps); traffic is plain HTTP from the
 # browser to the cloud Nginx for now and will move to HTTPS later.
 transport.tls.enable = true

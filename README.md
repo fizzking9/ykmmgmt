@@ -132,22 +132,21 @@ Commit the generated baseline migration, then rebuild the image. If you forget, 
 
 ### 4. Logs
 
-All containers write rotating JSON logs (max 5 × 10 MB each) captured by Docker:
+Logs are written to **plain files under `logs/`** (openable in any editor) and mirrored to `docker logs`. All rotation is automatic:
+
+| File | Contents | Rotation |
+|------|----------|----------|
+| `logs/backend/app.log` | Every API request, app event, error (JSON) | 10 MB × 5 files |
+| `logs/db/postgresql-YYYY-MM-DD.log` | PostgreSQL log + slow queries (>500 ms) | daily file, 20 MB cap |
+| `logs/frpc/frpc.log` | Tunnel health and reconnects | daily, 7 days kept |
+| `docker logs ykmmgmt-prod-frontend` | Nginx access/error log (not file-based) | 10 MB × 5 files |
 
 ```powershell
-# Recent activity — backend logs every API request, error, and startup event
-docker logs --tail 100 ykmmgmt-prod-backend
+# Tail the backend log live (any editor or)
+Get-Content logs\backend\app.log -Wait -Tail 50
 
-# Follow live (Ctrl+C to stop)
-docker logs -f ykmmgmt-prod-backend
-
-# Errors only (JSON: filter by level)
+# Errors from the last hour
 docker logs --since 1h ykmmgmt-prod-backend | findstr "ERROR"
-
-# Other containers
-docker logs --tail 100 ykmmgmt-prod-frontend   # Nginx access/error log
-docker logs --tail 100 ykmmgmt-prod-db         # PostgreSQL log
-docker logs --tail 100 ykmmgmt-prod-frpc       # tunnel health ("login to server success")
 ```
 
 Backend log fields: `timestamp`, `level`, `logger` (`uvicorn.access` = requests, `ykmmgmt` = app events, `uvicorn.error` = server errors), `message`. Set `LOG_FORMAT=text` in `deploy/.env.prod` for human-readable output instead.

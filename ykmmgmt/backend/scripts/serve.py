@@ -12,7 +12,10 @@ from app.core.logging import LOG_FORMAT_JSON, configure_logging
 
 
 def main() -> None:
-    configure_logging(json_format=os.getenv("LOG_FORMAT", "text") == LOG_FORMAT_JSON)
+    configure_logging(
+        json_format=os.getenv("LOG_FORMAT", "text") == LOG_FORMAT_JSON,
+        log_file=os.getenv("LOG_FILE") or None,
+    )
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
