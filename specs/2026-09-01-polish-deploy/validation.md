@@ -2,6 +2,8 @@
 
 How to know the implementation succeeded and can be merged. Every gate must pass.
 
+> **Result: all 12 gates passed — validated 2026-09-01.** Gate 7's end-to-end check was performed against the live deployment at http://43.108.32.160 (login → Schema Manager table create → CSV import through the full cleaning pipeline → Data Browser query → delete). Gate 8 was validated with a full Docker Desktop restart (all containers + tunnel auto-recovered). Gate 10's GHCR pull was performed after `docker login ghcr.io`.
+
 ---
 
 ## Gate 1 — README & Documentation Completeness
@@ -137,16 +139,16 @@ Then restore the produced dump into a scratch database (`pg_restore` into a fres
 
 ## Merge Checklist
 
-- [ ] All 12 gates pass on a clean checkout
-- [ ] README + `deploy/README.md` complete with no placeholders
-- [ ] Ruff, ESLint, tsc all clean
-- [ ] Backend Pytest and frontend Vitest suites fully green
-- [ ] Both Docker images build; backend non-root, frontend static-only
-- [ ] Prod compose stack healthy end-to-end (login, upload, browse, dashboard)
-- [ ] Stack auto-recovers from compose restart and Docker Desktop restart
-- [ ] Migration baseline works on fresh DB; startup guard fails fast on missing revisions
-- [ ] CI green on `main`; images in GHCR; `scripts/deploy.ps1` pulls and restarts locally
-- [ ] frpc connects to frps; cloud end-to-end check done or explicitly deferred
-- [ ] Backup script produces restorable dumps with pruning; schedule documented
-- [ ] `deploy/frpc.toml` and `backups/` git-ignored; no secrets committed
-- [ ] Dev workflow (uvicorn --reload + Vite dev server) unchanged
+- [x] All 12 gates pass on a clean checkout
+- [x] README + `deploy/README.md` complete with no placeholders
+- [x] Ruff, ESLint, tsc all clean
+- [x] Backend Pytest and frontend Vitest suites fully green (205 + 96 tests)
+- [x] Both Docker images build; backend non-root, frontend static-only
+- [x] Prod compose stack healthy end-to-end (login, upload, browse, dashboard)
+- [x] Stack auto-recovers from compose restart and Docker Desktop restart
+- [x] Migration baseline works on fresh DB; startup guard fails fast on missing revisions
+- [x] CI green on `main`; images in GHCR; `scripts/deploy.ps1` pulls and restarts locally
+- [x] frpc connects to frps; cloud end-to-end check done (http://43.108.32.160)
+- [x] Backup script produces restorable dumps with pruning; schedule documented
+- [x] `deploy/frpc.toml` and `backups/` git-ignored; no secrets committed
+- [x] Dev workflow (uvicorn --reload + Vite dev server) unchanged
