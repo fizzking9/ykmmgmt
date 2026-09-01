@@ -1,0 +1,11 @@
+# Build context: ykmmgmt/backend/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+tests/
+.env
+.env.*
+*.log

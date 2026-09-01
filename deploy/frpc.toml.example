@@ -1,0 +1,28 @@
+# frp client — runs as the `frpc` service in docker-compose.prod.yml on the
+# local machine. Copy to deploy/frpc.toml (git-ignored — contains the token)
+# and fill in <CLOUD_SERVER_IP> and <FRP_TOKEN>.
+
+serverAddr = "<CLOUD_SERVER_IP>"
+serverPort = 7000
+auth.token = "<FRP_TOKEN>"
+
+# Keep retrying forever — the tunnel comes up whenever both the port and
+# the server are reachable (survives security-group changes and reboots).
+loginFailExit = false
+
+# Encrypt the tunnel itself (frpc ↔ frps); traffic is plain HTTP from the
+# browser to the cloud Nginx for now and will move to HTTPS later.
+transport.tls.enable = true
+
+# Reconnect forever — the local machine may reboot or lose connectivity.
+# (This is frp's default behaviour; restart: unless-stopped on the container
+# covers process crashes.)
+
+# Tunnel the frontend (SPA + /api) to the cloud server. frpc runs inside
+# the compose network, so `frontend` resolves to the frontend container.
+[[proxies]]
+name = "ykmmgmt-web"
+type = "tcp"
+localIP = "frontend"
+localPort = 80
+remotePort = 7001

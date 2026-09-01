@@ -1,0 +1,54 @@
+name: Deploy (build & push images)
+
+# Runs after CI succeeds on main; builds both Docker images and pushes them
+# to the GitHub Container Registry. The production machine then pulls the
+# new images via scripts/deploy.ps1 — no deployment reaches the cloud
+# reverse-proxy server (it is configured once, manually).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  build-and-push:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout the exact commit CI tested
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Compute lowercase image owner
+        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ykmmgmt/backend
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_OWNER }}/ykmmgmt-backend:latest
+            ghcr.io/${{ env.IMAGE_OWNER }}/ykmmgmt-backend:${{ github.event.workflow_run.head_sha }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ykmmgmt/frontend
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_OWNER }}/ykmmgmt-frontend:latest
+            ghcr.io/${{ env.IMAGE_OWNER }}/ykmmgmt-frontend:${{ github.event.workflow_run.head_sha }}

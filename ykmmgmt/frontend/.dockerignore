@@ -1,0 +1,5 @@
+# Build context: ykmmgmt/frontend/
+node_modules/
+dist/
+.vite/
+*.log

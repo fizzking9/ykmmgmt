@@ -1,0 +1,80 @@
+# Production stack — runs on the local machine.
+#
+#   docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
+#
+# Image names come from deploy/.env.prod (set by scripts/deploy.ps1), with a
+# `build:` fallback so the stack can also run from locally built images
+# during development of the deployment itself.
+#
+# Only the `frontend` port is published to the host; `frpc` carries it to
+# the Alibaba Cloud reverse-proxy entry over the tunnel.
+
+# Isolate this stack from the dev docker-compose.yml in the same directory —
+# without an explicit project name both files would share the default
+# project (directory name) and their `db` services would clobber each other.
+name: ykmmgmt-prod
+
+services:
+  db:
+    image: postgres:16
+    container_name: ykmmgmt-prod-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ykmmgmt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in deploy/.env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-ykmmgmt}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ykmmgmt} -d ${POSTGRES_DB:-ykmmgmt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  backend:
+    image: ${BACKEND_IMAGE:-ykmmgmt-backend:dev}
+    build: ./ykmmgmt/backend
+    container_name: ykmmgmt-prod-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ykmmgmt}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ykmmgmt}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required in deploy/.env.prod}
+      ROOT_USERNAME: ${ROOT_USERNAME:-}
+      ROOT_PASSWORD: ${ROOT_PASSWORD:-}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ykmmgmt-frontend:dev}
+    build: ./ykmmgmt/frontend
+    container_name: ykmmgmt-prod-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - backend
+    networks:
+      - internal
+
+  frpc:
+    image: snowdreamtech/frpc:latest
+    container_name: ykmmgmt-prod-frpc
+    restart: unless-stopped
+    volumes:
+      - ./deploy/frpc.toml:/etc/frp/frpc.toml:ro
+    depends_on:
+      - frontend
+    networks:
+      - internal
+
+volumes:
+  pgdata_prod:
+
+networks:
+  internal:

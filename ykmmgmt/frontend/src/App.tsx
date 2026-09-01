@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
 import HomePage from "@/pages/HomePage";
@@ -21,6 +22,7 @@ import SchemaCreateTablePage from "@/pages/SchemaCreateTablePage";
 import SchemaTableDetailPage from "@/pages/SchemaTableDetailPage";
 import UsersPage from "@/pages/UsersPage";
 import ProfilePage from "@/pages/ProfilePage";
+import NotFoundPage from "@/pages/NotFoundPage";
 
 function FullPageSpinner() {
   return (
@@ -42,7 +44,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <>
+    <ErrorBoundary>
       <Toaster position="top-right" richColors />
       <Routes>
         {/* Public */}
@@ -74,9 +76,9 @@ export default function App() {
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
 
-        {/* Fallback — unknown paths redirect home (which itself requires auth) */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Fallback — unknown paths get a friendly 404 */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
-    </>
+    </ErrorBoundary>
   );
 }

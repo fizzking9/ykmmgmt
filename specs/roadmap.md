@@ -311,26 +311,26 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ### Local Production Stack (Docker Compose on the local machine)
 
-- [ ] Docker multi-stage build for the backend (FastAPI + uvicorn)
-- [ ] Docker multi-stage build for the frontend (Vite build → static assets served by an Nginx container, which also proxies `/api` to the backend container)
-- [ ] Extend `docker-compose.yml` into a production compose file: `db` (postgres:16, existing) + `backend` + `frontend-nginx` services on an internal network; only the Nginx port exposed to the host
-- [ ] Environment-based config: production `.env` (DATABASE_URL pointing at the `db` service, strong SECRET_KEY, ROOT_USERNAME/ROOT_PASSWORD); `.env.example` updated with the new variables
-- [ ] Alembic migrations run automatically on backend container start (entrypoint: `alembic upgrade head` before uvicorn)
-- [ ] Schema migration lifecycle: squash the Schema Manager's runtime migrations (`runtime_migrations/`) into a version-controlled baseline migration (checkpoint), so redeployments and DB restores never depend on machine-local files; startup guard when `alembic_version` references a missing revision
-- [ ] Comprehensive error handling and user-friendly error pages
-- [ ] Logging: structured logs (JSON) from FastAPI
-- [ ] README with setup instructions for new developers
+- [x] Docker multi-stage build for the backend (FastAPI + uvicorn)
+- [x] Docker multi-stage build for the frontend (Vite build → static assets served by an Nginx container, which also proxies `/api` to the backend container)
+- [x] Extend `docker-compose.yml` into a production compose file: `db` (postgres:16, existing) + `backend` + `frontend-nginx` services on an internal network; only the Nginx port exposed to the host
+- [x] Environment-based config: production `.env` (DATABASE_URL pointing at the `db` service, strong SECRET_KEY, ROOT_USERNAME/ROOT_PASSWORD); `.env.example` updated with the new variables
+- [x] Alembic migrations run automatically on backend container start (entrypoint: `alembic upgrade head` before uvicorn)
+- [x] Schema migration lifecycle: squash the Schema Manager's runtime migrations (`runtime_migrations/`) into a version-controlled baseline migration (checkpoint), so redeployments and DB restores never depend on machine-local files; startup guard when `alembic_version` references a missing revision
+- [x] Comprehensive error handling and user-friendly error pages
+- [x] Logging: structured logs (JSON) from FastAPI
+- [x] README with setup instructions for new developers
 
 ### Public Access via Alibaba Cloud (one-time manual setup, documented)
 
 - [ ] frps deployed on the Alibaba Cloud server; frpc running as a service on the local machine (docker-compose service or Windows service) exposing the local Nginx port through the tunnel
 - [ ] Nginx on the Alibaba Cloud server reverse-proxies public HTTP (IP-only for now) to the frp tunnel port
-- [ ] Cloud-side config documented in the README/deploy doc — it does not change with app releases
+- [x] Cloud-side config documented in the README/deploy doc — it does not change with app releases
 
 ### CI/CD Pipeline (GitHub Actions)
 
-- [ ] Workflow on push to `main`: Ruff + Pytest (backend), ESLint + tsc + Vitest (frontend)
-- [ ] Build backend + frontend Docker images and push to a container registry (GHCR or Alibaba ACR — decided at implementation time)
+- [x] Workflow on push to `main`: Ruff + Pytest (backend), ESLint + tsc + Vitest (frontend)
+- [x] Build backend + frontend Docker images and push to a container registry (GHCR or Alibaba ACR — decided at implementation time)
 - [ ] Local machine pulls and restarts: a `deploy` script (`docker compose pull && docker compose up -d`) run manually, or watchtower for auto-pull
 - [ ] Production compose file references registry images (with `build:` fallback for local dev)
 
