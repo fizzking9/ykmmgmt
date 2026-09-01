@@ -538,8 +538,8 @@ function colTypeKey(sqlType: string): string {
   if (t === "INTEGER") return "Integer";
   if (t.startsWith("NUMERIC") || t.startsWith("DECIMAL")) return "Numeric";
   if (t === "BOOLEAN") return "Boolean";
+  if (t === "DATETIME" || t.startsWith("TIMESTAMP")) return "DateTime";
   if (t === "DATE") return "Date";
-  if (t.startsWith("TIMESTAMP")) return "DateTime";
   if (t === "JSON" || t === "JSONB") return "JSON";
   return "Text";
 }

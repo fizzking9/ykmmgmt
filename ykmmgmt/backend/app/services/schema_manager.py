@@ -216,19 +216,25 @@ def _type_ddl(type_key: str, length: int | None = None) -> str:
 
 
 def _sa_type_to_key(sa_type: Any) -> tuple[str, int | None]:
-    """Map a SQLAlchemy column type back to a picker key + length."""
+    """Map a SQLAlchemy column type back to a picker key + length.
+
+    Subclasses must be tested before their base classes: Text extends
+    String and BigInteger extends Integer, so a reflected ``text`` column
+    would otherwise be rebuilt as String(255) — corrupting the model and
+    eventually the table itself on rebuilds.
+    """
     type_module = type(sa_type).__module__
     type_name = type(sa_type).__name__
     if type_module.startswith("sqlalchemy.dialects") and type_name in ("JSON", "JSONB"):
         return "JSON", None
-    if isinstance(sa_type, String):
-        return "String", sa_type.length
     if isinstance(sa_type, Text):
         return "Text", None
-    if isinstance(sa_type, Integer) and not isinstance(sa_type, BigInteger):
-        return "Integer", None
+    if isinstance(sa_type, String):
+        return "String", sa_type.length
     if isinstance(sa_type, BigInteger):
         return "BigInteger", None
+    if isinstance(sa_type, Integer):
+        return "Integer", None
     if isinstance(sa_type, Numeric):
         return "Numeric", None
     if isinstance(sa_type, Boolean):

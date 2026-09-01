@@ -111,6 +111,52 @@ async def test_table_detail_includes_columns_and_sample():
             await purge_dynamic_table(name)
 
 
+@pytest.mark.asyncio
+async def test_text_and_datetime_types_survive_resync():
+    """Regression: Text/DateTime columns keep their type after resync.
+
+    Text subclasses String, so a naive isinstance order rebuilt reflected
+    ``text`` columns as String(255) — inspection then reported VARCHAR(255)
+    for columns that are TEXT in the database.
+    """
+    name = _unique("typemapping")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        try:
+            await _create_table(
+                client,
+                name,
+                columns=[
+                    {"name": "long_note", "type": "Text", "nullable": True, "label": "长文本"},
+                    {"name": "short_note", "type": "String", "length": 50, "nullable": True, "label": "短文本"},
+                    {"name": "happened_at", "type": "DateTime", "nullable": True, "label": "发生时间"},
+                ],
+            )
+            resp = await client.get(f"/api/schema/tables/{name}")
+            assert resp.status_code == 200
+            types = {c["name"]: c["type"] for c in resp.json()["columns"]}
+            assert types["long_note"] == "TEXT"
+            assert types["short_note"] == "VARCHAR(50)"
+            assert types["happened_at"] == "DATETIME"
+        finally:
+            await purge_dynamic_table(name)
+
+
+def test_sa_type_to_key_subclass_order():
+    """Unit: subclass types map before their base classes."""
+    from sqlalchemy import BigInteger, Date, DateTime, Integer, Numeric, String, Text
+
+    from app.services.schema_manager import _sa_type_to_key
+
+    assert _sa_type_to_key(Text()) == ("Text", None)
+    assert _sa_type_to_key(String(123)) == ("String", 123)
+    assert _sa_type_to_key(BigInteger()) == ("BigInteger", None)
+    assert _sa_type_to_key(Integer()) == ("Integer", None)
+    assert _sa_type_to_key(Numeric()) == ("Numeric", None)
+    assert _sa_type_to_key(DateTime()) == ("DateTime", None)
+    assert _sa_type_to_key(Date()) == ("Date", None)
+
+
 # ── Manual creation & runtime registry ──────────────────────────────────────
 
 

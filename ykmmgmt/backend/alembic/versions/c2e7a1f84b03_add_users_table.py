@@ -1,7 +1,7 @@
 """Add users table for auth & multi-user support.
 
 Revision ID: c2e7a1f84b03
-Revises: 9e760a8b1795
+Revises: b7d3e9a14f25
 Create Date: 2026-08-28
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c2e7a1f84b03"
-down_revision: Union[str, Sequence[str], None] = "9e760a8b1795"
+down_revision: Union[str, Sequence[str], None] = "b7d3e9a14f25"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
