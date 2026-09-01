@@ -3,7 +3,7 @@
 import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Roles accepted on input — `root` can never be assigned via the API
 InputRole = Literal["admin", "user"]
@@ -48,3 +48,24 @@ class UserUpdate(BaseModel):
 
 class UserStatusUpdate(BaseModel):
     is_active: bool
+
+
+class ProfileUpdate(BaseModel):
+    """Self-service profile update.
+
+    ``current_password`` is required only when changing the password —
+    username changes are authorized simply by owning the session."""
+
+    current_password: str | None = Field(
+        None, min_length=1, max_length=200, description="当前密码（修改密码时必填）"
+    )
+    username: str | None = Field(None, min_length=3, max_length=100, description="新用户名（3-100 字符）")
+    new_password: str | None = Field(None, min_length=8, max_length=200, description="新密码（至少 8 位）")
+
+    @model_validator(mode="after")
+    def _validate_change_request(self):
+        if self.username is None and self.new_password is None:
+            raise ValueError("必须提供新用户名或新密码之一")
+        if self.new_password is not None and not self.current_password:
+            raise ValueError("修改密码必须提供当前密码")
+        return self

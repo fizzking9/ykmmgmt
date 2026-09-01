@@ -15,6 +15,7 @@ import {
   PieChart,
   Plus,
   Table2,
+  UserRound,
   Users,
 } from "lucide-react";
 import { useState } from "react";
@@ -250,6 +251,23 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
         </CollapsibleContent>
       </Collapsible>
 
+      {/* 个人设置 — every role; also reachable by clicking the avatar */}
+      <NavLink
+        to="/profile"
+        onClick={onNavClick}
+        className={() =>
+          cn(
+            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted",
+            location.pathname.startsWith("/profile")
+              ? "bg-muted text-primary"
+              : "text-muted-foreground",
+          )
+        }
+      >
+        <UserRound className="h-4 w-4" />
+        个人设置
+      </NavLink>
+
       {/* 用户管理 — admin and root only */}
       {isAdmin && (
         <NavLink
@@ -269,10 +287,19 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
         </NavLink>
       )}
 
-      {/* Current user + logout — pinned to the bottom */}
+      {/* Current user + logout — pinned to the bottom. The avatar/name
+          block doubles as a shortcut to the profile page. */}
       {user && (
         <div className="mt-auto border-t pt-3">
-          <div className="mb-2 flex items-center gap-2 px-2">
+          <button
+            type="button"
+            title="个人设置"
+            onClick={() => {
+              onNavClick?.();
+              navigate("/profile");
+            }}
+            className="mb-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+          >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
               {user.username.charAt(0).toUpperCase()}
             </div>
@@ -280,7 +307,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
               <p className="truncate text-sm font-medium">{user.username}</p>
               <p className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</p>
             </div>
-          </div>
+          </button>
           <button
             type="button"
             onClick={handleLogout}

@@ -20,6 +20,7 @@ import SchemaTablesPage from "@/pages/SchemaTablesPage";
 import SchemaCreateTablePage from "@/pages/SchemaCreateTablePage";
 import SchemaTableDetailPage from "@/pages/SchemaTableDetailPage";
 import UsersPage from "@/pages/UsersPage";
+import ProfilePage from "@/pages/ProfilePage";
 
 function FullPageSpinner() {
   return (
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/schema/create" element={<SchemaCreateTablePage />} />
           <Route path="/schema/tables/:name" element={<SchemaTableDetailPage />} />
           <Route path="/users" element={<UsersPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Route>
 
         {/* Fallback — unknown paths redirect home (which itself requires auth) */}

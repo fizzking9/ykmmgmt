@@ -8,13 +8,14 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.schemas.user import LoginRequest, UserProfile
+from app.schemas.user import LoginRequest, ProfileUpdate, UserProfile
 from app.services.auth import (
     REFRESH_TOKEN_TYPE,
     TokenError,
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
     verify_password,
 )
 
@@ -90,4 +91,36 @@ async def logout(response: Response):
 @router.get("/me", response_model=UserProfile)
 async def me(user: User = Depends(get_current_user)):
     """Return the current user's profile from the access token."""
+    return _profile(user)
+
+
+@router.put("/profile", response_model=UserProfile)
+async def update_profile(
+    body: ProfileUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Self-service update of the current user's username and/or password.
+
+    Unlike the admin user-management endpoints, hierarchy rules do not
+    apply here — every authenticated account (root included) may change
+    its own credentials. The current password is confirmed only when
+    changing the password; username changes need no re-authentication.
+    """
+    if body.new_password is not None:
+        if (
+            not body.current_password
+            or not verify_password(body.current_password, user.password_hash)
+        ):
+            raise HTTPException(status_code=400, detail="当前密码不正确")
+        user.password_hash = hash_password(body.new_password)
+
+    if body.username is not None and body.username != user.username:
+        dup = await db.execute(select(User.id).where(User.username == body.username))
+        if dup.scalar_one_or_none() is not None:
+            raise HTTPException(status_code=409, detail=f"用户名 '{body.username}' 已存在")
+        user.username = body.username
+
+    await db.flush()
+    await db.refresh(user)
     return _profile(user)
