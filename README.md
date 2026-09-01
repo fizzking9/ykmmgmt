@@ -130,7 +130,31 @@ python -m scripts.squash_runtime_migrations
 
 Commit the generated baseline migration, then rebuild the image. If you forget, the backend startup guard fails fast with a clear error naming the missing revision instead of a cryptic Alembic stack trace.
 
-### 4. Backups
+### 4. Logs
+
+All containers write rotating JSON logs (max 5 × 10 MB each) captured by Docker:
+
+```powershell
+# Recent activity — backend logs every API request, error, and startup event
+docker logs --tail 100 ykmmgmt-prod-backend
+
+# Follow live (Ctrl+C to stop)
+docker logs -f ykmmgmt-prod-backend
+
+# Errors only (JSON: filter by level)
+docker logs --since 1h ykmmgmt-prod-backend | findstr "ERROR"
+
+# Other containers
+docker logs --tail 100 ykmmgmt-prod-frontend   # Nginx access/error log
+docker logs --tail 100 ykmmgmt-prod-db         # PostgreSQL log
+docker logs --tail 100 ykmmgmt-prod-frpc       # tunnel health ("login to server success")
+```
+
+Backend log fields: `timestamp`, `level`, `logger` (`uvicorn.access` = requests, `ykmmgmt` = app events, `uvicorn.error` = server errors), `message`. Set `LOG_FORMAT=text` in `deploy/.env.prod` for human-readable output instead.
+
+Import history (who imported what, when, row counts) is also recorded in the database and visible in the app under 数据导入 → 导入历史.
+
+### 5. Backups
 
 ```powershell
 # Manual backup (custom-format dump into backups/, prunes >30 days old)

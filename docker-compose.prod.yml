@@ -14,11 +14,20 @@
 # project (directory name) and their `db` services would clobber each other.
 name: ykmmgmt-prod
 
+# Rotated JSON logs per container — view with `docker logs <container>`,
+# inspect raw files under \\\\wsl$\docker-desktop-data (see README).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:16
     container_name: ykmmgmt-prod-db
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ykmmgmt}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in deploy/.env.prod}
@@ -38,6 +47,7 @@ services:
     build: ./ykmmgmt/backend
     container_name: ykmmgmt-prod-backend
     restart: unless-stopped
+    logging: *default-logging
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ykmmgmt}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ykmmgmt}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required in deploy/.env.prod}
@@ -55,6 +65,7 @@ services:
     build: ./ykmmgmt/frontend
     container_name: ykmmgmt-prod-frontend
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     depends_on:
@@ -66,6 +77,7 @@ services:
     image: snowdreamtech/frpc:latest
     container_name: ykmmgmt-prod-frpc
     restart: unless-stopped
+    logging: *default-logging
     volumes:
       - ./deploy/frpc.toml:/etc/frp/frpc.toml:ro
     depends_on:
