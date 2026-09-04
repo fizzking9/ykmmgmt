@@ -4,13 +4,15 @@ Views are built against a dynamically created fixture table (Schema
 Manager API), since the system ships with no built-in business tables.
 """
 
+import csv
+import io
 import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
-from tests.conftest import ensure_shared_table
+from tests.conftest import anonymous_cookies, ensure_shared_table
 
 pytestmark = pytest.mark.usefixtures("_dispose_engine_after_test")
 
@@ -606,6 +608,175 @@ async def test_data_time_params_ignored_without_date_column(shared_dynamic_table
         assert overridden.json()["rows"] == plain.json()["rows"]
 
         await _cleanup(client, view_id, [viz_id])
+
+
+# ── CSV Export (/export) tests ─────────────────────────────────────────────
+
+
+async def _create_wide_view(client: AsyncClient, table: str) -> str:
+    """Helper: create a view exposing order_no / amount / record_time."""
+    view_config = {
+        "from_tables": [table],
+        "joins": [],
+        "columns": [
+            {"table": table, "column": "order_no", "alias": None},
+            {"table": table, "column": "amount", "alias": None},
+            {"table": table, "column": "record_time", "alias": None},
+        ],
+        "computed_columns": [],
+        "selected_computed_columns": [],
+        "filters": [],
+        "group_by": [],
+        "aggregations": [],
+    }
+    resp = await client.post(
+        "/api/views",
+        json={"name": _unique_name("宽视图"), "description": "export", "config_json": view_config},
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+async def _create_table_viz(
+    client: AsyncClient,
+    view_id: str,
+    name: str,
+    config: dict | None = None,
+) -> str:
+    """Helper: create a table chart visualization."""
+    resp = await client.post(
+        "/api/visualizations",
+        json={
+            "name": _unique_name(name),
+            "view_id": view_id,
+            "chart_type": "table",
+            "config_json": config or {"visible_columns": ["order_no", "amount", "record_time"]},
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+def _parse_csv(text: str) -> tuple[list[str], list[list[str]]]:
+    """Parse an exported CSV body (BOM included) into header + rows."""
+    assert text.startswith("\ufeff"), "CSV must start with a UTF-8 BOM"
+    reader = csv.reader(io.StringIO(text.lstrip("\ufeff")))
+    rows = list(reader)
+    return rows[0], rows[1:]
+
+
+@pytest.mark.asyncio
+async def test_export_table_returns_csv(shared_dynamic_table):
+    """GET /api/visualizations/{id}/export streams CSV for table charts."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_wide_view(client, table)
+        viz_id = await _create_table_viz(client, view_id, "导出测试")
+
+        resp = await client.get(f"/api/visualizations/{viz_id}/export")
+        assert resp.status_code == 200, resp.text
+        assert resp.headers["content-type"].startswith("text/csv")
+        assert "charset=utf-8" in resp.headers["content-type"]
+        disposition = resp.headers["content-disposition"]
+        assert disposition.startswith("attachment")
+        assert "filename*=UTF-8''" in disposition
+        assert ".csv" in disposition
+
+        header, rows = _parse_csv(resp.text)
+        assert header == ["order_no", "amount", "record_time"]
+        assert len(rows) == 6  # all fixture rows
+        first = dict(zip(header, rows[0], strict=True))
+        assert first["order_no"] == "A001"
+        assert float(first["amount"]) == 100.50
+        # datetime values are serialized as ISO strings
+        assert first["record_time"].startswith("2026-06-05T10:00:00")
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_export_non_table_rejected(shared_dynamic_table):
+    """GET /export returns 422 with a Chinese message for non-table charts."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_view(client, table)
+        resp = await client.post(
+            "/api/visualizations",
+            json={
+                "name": _unique_name("柱状导出"),
+                "view_id": view_id,
+                "chart_type": "bar",
+                "config_json": {"x_column": "order_no", "y_columns": ["amount"]},
+            },
+        )
+        assert resp.status_code == 201
+        viz_id = resp.json()["id"]
+
+        resp = await client.get(f"/api/visualizations/{viz_id}/export")
+        assert resp.status_code == 422
+        assert "仅表格" in resp.json()["detail"]
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_export_time_params_match_data_endpoint(shared_dynamic_table):
+    """Time-profile params apply to /export identically to /data."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_wide_view(client, table)
+        viz_id = await _create_table_viz(
+            client,
+            view_id,
+            "时间导出",
+            config={
+                "visible_columns": ["order_no", "amount", "record_time"],
+                "date_column": "record_time",
+                "default_granularity": "day",
+                "default_agg": "SUM",
+            },
+        )
+
+        params = {"start": "2026-06-01", "end": "2026-06-30"}
+        data_resp = await client.get(f"/api/visualizations/{viz_id}/data", params=params)
+        assert data_resp.status_code == 200
+        export_resp = await client.get(f"/api/visualizations/{viz_id}/export", params=params)
+        assert export_resp.status_code == 200
+
+        _, rows = _parse_csv(export_resp.text)
+        assert len(rows) == len(data_resp.json()["rows"]) == 4  # June fixture rows
+        for row in rows:
+            assert row[2].startswith("2026-06")
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_export_requires_authentication(shared_dynamic_table):
+    """Unauthenticated /export requests are rejected with 401."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await _setup(client, shared_dynamic_table)
+        view_id = await _create_wide_view(client, table)
+        viz_id = await _create_table_viz(client, view_id, "未登录导出")
+
+        async with AsyncClient(transport=transport, base_url="http://test", cookies=anonymous_cookies()) as anon:
+            resp = await anon.get(f"/api/visualizations/{viz_id}/export")
+            assert resp.status_code == 401
+
+        await _cleanup(client, view_id, [viz_id])
+
+
+@pytest.mark.asyncio
+async def test_export_not_found():
+    """GET /export returns 404 for a non-existent visualization."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(f"/api/visualizations/{uuid.uuid4()}/export")
+        assert resp.status_code == 404
 
 
 @pytest.mark.asyncio

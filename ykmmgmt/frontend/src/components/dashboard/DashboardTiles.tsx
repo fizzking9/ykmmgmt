@@ -23,6 +23,9 @@ function formatKpiValue(value: number): string {
   const abs = Math.abs(value);
   if (abs >= 1e8) return `${(value / 1e8).toFixed(2)} 亿`;
   if (abs >= 1e4) return `${(value / 1e4).toFixed(2)} 万`;
+  // Small magnitudes keep two significant digits — 2 decimals rounded
+  // values like 0.0042 down to "0" on rate/ratio tiles
+  if (abs > 0 && abs < 1) return String(Number(value.toPrecision(2)));
   return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
 
@@ -82,6 +85,7 @@ export function VisualizationTileBody({
       config={data.config_json}
       columns={data.columns}
       rows={data.rows}
+      columnTypes={data.column_types}
       height={height ?? 300}
       fill={fill}
     />

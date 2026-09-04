@@ -51,6 +51,7 @@ export function VisualizationRenderer({
   config,
   columns,
   rows,
+  columnTypes = {},
   height = 480,
   fill = false,
 }: {
@@ -58,6 +59,8 @@ export function VisualizationRenderer({
   config: Record<string, unknown>;
   columns: string[];
   rows: Record<string, unknown>[];
+  /** Coarse DB type per column ("number"/"date"/"text"/"boolean") from the backend; missing entries fall back to value inference. */
+  columnTypes?: Record<string, string>;
   /** Chart height in px (default 480). */
   height?: number;
   /** Fill a height-constrained parent (dashboard tiles) instead of a fixed height. */
@@ -68,8 +71,12 @@ export function VisualizationRenderer({
 
   const dateColumns = useMemo(() => {
     if (!rows.length || !columns.length) return [];
-    return columns.filter((col) => isDateColumn(rows.map((r) => r[col])));
-  }, [columns, rows]);
+    return columns.filter((col) => {
+      const declared = columnTypes[col];
+      if (declared) return declared === "date";
+      return isDateColumn(rows.map((r) => r[col]));
+    });
+  }, [columns, rows, columnTypes]);
 
   if (!rows.length) {
     return (

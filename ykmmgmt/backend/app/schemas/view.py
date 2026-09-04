@@ -176,3 +176,7 @@ class ViewDataResponse(BaseModel):
     page: int
     size: int
     columns: list[str]
+    # Coarse per-column type category ("number"/"date"/"text"/"boolean")
+    # from the database schema — lets the frontend classify columns without
+    # guessing from values. Columns with unknown types are omitted.
+    column_types: dict[str, str] = Field(default_factory=dict)

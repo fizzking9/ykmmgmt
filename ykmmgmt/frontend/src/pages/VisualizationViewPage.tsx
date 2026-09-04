@@ -106,6 +106,7 @@ export default function VisualizationViewPage() {
               config={data.config_json}
               columns={data.columns}
               rows={data.rows}
+              columnTypes={data.column_types}
             />
           )}
         </CardContent>

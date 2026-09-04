@@ -28,6 +28,8 @@ export interface VisualizationDataResponse {
   rows: Record<string, unknown>[];
   chart_type: string;
   config_json: Record<string, unknown>;
+  /** Coarse DB type per column ("number"/"date"/"text"/"boolean"); missing entries fall back to value inference. */
+  column_types?: Record<string, string>;
 }
 
 // ── API helpers ─────────────────────────────────────────────────────────────

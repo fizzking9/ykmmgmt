@@ -18,7 +18,13 @@ class Settings(BaseSettings):
 
     # Look in the backend dir first, then the repo root — the project keeps
     # its .env at the repo root while servers/tests run from backend/
-    model_config = {"env_file": (".env", "../../.env"), "env_file_encoding": "utf-8"}
+    # extra="ignore": the root .env also carries MCP keys (YKM_*) that the
+    # backend doesn't consume — they must not fail validation.
+    model_config = {
+        "env_file": (".env", "../../.env"),
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 settings = Settings()

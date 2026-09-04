@@ -86,3 +86,6 @@ class VisualizationDataResponse(BaseModel):
     rows: list[dict[str, Any]]
     chart_type: str
     config_json: dict[str, Any]
+    # Coarse per-column type category ("number"/"date"/"text"/"boolean")
+    # from the database schema — see ViewDataResponse.column_types.
+    column_types: dict[str, str] = Field(default_factory=dict)

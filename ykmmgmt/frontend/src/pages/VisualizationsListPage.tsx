@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useViews } from "@/hooks/useViews";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/lib/api";
 import {
   useVisualizations,
   useVisualizationData,
@@ -118,6 +119,7 @@ function ChartThumbnail({ viz }: { viz: VisualizationListResponse }) {
           config={data.config_json}
           columns={data.columns}
           rows={data.rows}
+          columnTypes={data.column_types}
           height={320}
         />
       </div>
@@ -193,7 +195,14 @@ export default function VisualizationsListPage() {
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [deleteTarget, setDeleteTarget] = useState<VisualizationListResponse | null>(null);
 
-  // ── PNG export & batch selection ──────────────────────────────────────
+  // ── Export (CSV for tables, PNG for charts) & batch selection ─────────
+  // Table visualizations download CSV straight from the backend export
+  // endpoint (GET /api/visualizations/{id}/export). All other chart types
+  // keep the html2canvas capture flow: each file downloads straight to the
+  // browser's default download location (same as single exports — no
+  // save-as dialog). Batch files get a "visualizations_YYYY-MM-DD_HH-mm-ss"
+  // prefix so they group together; a real subfolder there is impossible
+  // without a directory picker.
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Queue of visualizations pending PNG export (one at a time, off-screen)
@@ -275,19 +284,62 @@ export default function VisualizationsListPage() {
   const selectAll = () => setSelectedIds(new Set(sortedRows.map((v) => v.id)));
   const clearAll = () => setSelectedIds(new Set());
 
-  // ── PNG export ────────────────────────────────────────────────────────
-  // Every file downloads straight to the browser's default download
-  // location (same as single exports — no save-as dialog). Batch files get
-  // a "visualizations_YYYY-MM-DD_HH-mm-ss" prefix so they group together;
-  // a real subfolder there is impossible without a directory picker.
+  // ── Export helpers ────────────────────────────────────────────────────
+
+  const downloadCsvExport = async (
+    target: VisualizationListResponse,
+    batchPrefix: string | null,
+  ): Promise<void> => {
+    const res = await apiFetch(`/api/visualizations/${target.id}/export`);
+    if (!res.ok) {
+      throw new Error(`「${target.name}」CSV 导出失败`);
+    }
+    const blob = await res.blob();
+    const baseName = sanitizeFilename(target.name);
+    const filename = batchPrefix ? `${batchPrefix}_${baseName}.csv` : `${baseName}.csv`;
+    downloadBlob(blob, filename);
+  };
+
+  // Table exports are plain downloads — no off-screen canvas, no progress
+  // queue. Failures are reported per file and never abort the batch.
+  const exportCsvTargets = async (
+    targets: VisualizationListResponse[],
+    batchPrefix: string | null,
+  ): Promise<void> => {
+    let done = 0;
+    for (const viz of targets) {
+      try {
+        await downloadCsvExport(viz, batchPrefix);
+        done += 1;
+      } catch {
+        toast.error(`「${viz.name}」CSV 导出失败`);
+      }
+    }
+    if (done > 0) {
+      toast.success(
+        batchPrefix
+          ? `已导出 ${done} 个 CSV 至下载目录（文件名前缀：${batchPrefix}）`
+          : `已导出 ${done} 个 CSV`,
+      );
+    }
+  };
 
   const beginExport = (targets: VisualizationListResponse[], batch: boolean) => {
     if (targets.length === 0 || exporting) return;
-    exportTotalRef.current = targets.length;
+    const batchPrefix = batch ? batchStamp("visualizations") : null;
+    // Table visualizations download CSV from the backend export endpoint;
+    // everything else goes through the off-screen PNG queue below.
+    const csvTargets = targets.filter((v) => v.chart_type === "table");
+    const pngTargets = targets.filter((v) => v.chart_type !== "table");
+    if (csvTargets.length > 0) {
+      void exportCsvTargets(csvTargets, batchPrefix);
+    }
+    if (pngTargets.length === 0) return;
+    exportTotalRef.current = pngTargets.length;
     exportDoneRef.current = 0;
-    setExportProgress({ done: 0, total: targets.length });
-    exportBatchRef.current = batch ? batchStamp("visualizations") : null;
-    setExportQueue(targets);
+    exportBatchRef.current = batchPrefix;
+    setExportProgress({ done: 0, total: pngTargets.length });
+    setExportQueue(pngTargets);
   };
 
   const handleCanvasReady = useCallback(
@@ -579,7 +631,7 @@ export default function VisualizationsListPage() {
                           </Button>
                         )}
 
-                        {/* 导出 PNG */}
+                        {/* 导出 — 表格类下载 CSV，图表类导出 PNG */}
                         <Button
                           variant="ghost"
                           size="sm"

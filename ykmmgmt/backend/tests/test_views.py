@@ -14,6 +14,7 @@ from httpx import ASGITransport, AsyncClient
 
 from main import app
 from tests.conftest import ensure_shared_table
+from tests.schema_cleanup import purge_dynamic_table
 
 pytestmark = pytest.mark.usefixtures("_dispose_engine_after_test")
 
@@ -179,3 +180,109 @@ async def test_delete_view_404():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.delete("/api/views/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
+
+
+# ── Column type categories ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_view_data_column_types(shared_dynamic_table):
+    """Data responses carry schema-derived type categories per column.
+
+    The visualization builder classifies columns by these instead of
+    guessing from values.
+    """
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = await ensure_shared_table(client, shared_dynamic_table)
+        view_config = {
+            "from_tables": [table],
+            "joins": [],
+            "columns": [
+                {"table": table, "column": col, "alias": None}
+                for col in ("order_no", "amount", "status", "record_time")
+            ],
+            "computed_columns": [],
+            "selected_computed_columns": [],
+            "filters": [],
+            "group_by": [],
+            "aggregations": [],
+        }
+        resp = await client.post(
+            "/api/views",
+            json={"name": _unique_name(), "description": "test", "config_json": view_config},
+        )
+        assert resp.status_code == 201, resp.text
+        view_id = resp.json()["id"]
+        try:
+            response = await client.get(f"/api/views/{view_id}/data", params={"page": 1, "size": 10})
+            assert response.status_code == 200
+            types = response.json()["column_types"]
+            assert types["order_no"] == "text"
+            assert types["amount"] == "number"
+            assert types["record_time"] == "date"
+        finally:
+            await client.delete(f"/api/views/{view_id}")
+
+
+@pytest.mark.asyncio
+async def test_numeric_looking_string_column_stays_text():
+    """A String column with numeric-looking values is typed 'text'.
+
+    Regression: the visualization builder inferred column types from
+    values, so after changing a column Integer → String (e.g. stock codes
+    via the Schema Manager) it was still misclassified as numeric and
+    excluded from category/aggregation dropdowns.
+    """
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        table = f"fixt_{uuid.uuid4().hex[:6]}"
+        resp = await client.post(
+            "/api/schema/tables",
+            json={
+                "name": table,
+                "display_name": "测试业务表",
+                "columns": [
+                    {"name": "stock_code", "type": "String", "length": 50, "nullable": True, "label": "股票代码"},
+                    {"name": "amount", "type": "Numeric", "nullable": True, "label": "金额"},
+                ],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        csv = "股票代码,金额\n600519,100\n000001,200\n"
+        resp = await client.post(
+            "/api/imports",
+            files={"file": ("codes.csv", csv.encode("utf-8"), "text/csv")},
+            data={"target_table": table},
+        )
+        assert resp.status_code == 200, resp.text
+
+        view_config = {
+            "from_tables": [table],
+            "joins": [],
+            "columns": [
+                {"table": table, "column": "stock_code", "alias": None},
+                {"table": table, "column": "amount", "alias": None},
+            ],
+            "computed_columns": [],
+            "selected_computed_columns": [],
+            "filters": [],
+            "group_by": [],
+            "aggregations": [],
+        }
+        resp = await client.post(
+            "/api/views",
+            json={"name": _unique_name(), "description": "test", "config_json": view_config},
+        )
+        assert resp.status_code == 201, resp.text
+        view_id = resp.json()["id"]
+        try:
+            response = await client.get(f"/api/views/{view_id}/data")
+            assert response.status_code == 200
+            types = response.json()["column_types"]
+            # '600519' parses as a number — the declared String type must win
+            assert types["stock_code"] == "text"
+            assert types["amount"] == "number"
+        finally:
+            await client.delete(f"/api/views/{view_id}")
+            await purge_dynamic_table(table)

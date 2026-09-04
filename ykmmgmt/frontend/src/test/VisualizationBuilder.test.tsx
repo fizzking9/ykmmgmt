@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { VisualizationBuilderProvider } from "@/contexts/VisualizationBuilderContext";
 import { DashboardBuilderProvider } from "@/contexts/DashboardBuilderContext";
-import VisualizationBuilderPage from "@/pages/VisualizationBuilderPage";
+import VisualizationBuilderPage, { compactNumber } from "@/pages/VisualizationBuilderPage";
 
 // Mock the hooks
 vi.mock("@/hooks/useViews", () => ({
@@ -198,5 +198,42 @@ describe("VisualizationBuilderPage", () => {
     fireEvent.click(screen.getByText("饼图"));
     expect(screen.getByText("饼图配置")).toBeInTheDocument();
     expect(screen.getByText("聚合方式")).toBeInTheDocument();
+  });
+});
+
+describe("compactNumber (axis tick formatter)", () => {
+  it("uses Chinese units for large magnitudes", () => {
+    expect(compactNumber(123456789)).toBe("1.234568亿");
+    expect(compactNumber(12345)).toBe("1.2345万");
+    expect(compactNumber(12000)).toBe("1.2万");
+    expect(compactNumber(-25000)).toBe("-2.5万");
+    expect(compactNumber(1234)).toBe("1234");
+    expect(compactNumber(12.5)).toBe("12.5");
+    expect(compactNumber(0)).toBe("0");
+  });
+
+  it("keeps small-magnitude ticks distinguishable instead of collapsing to 0", () => {
+    // Regression: toFixed(1) rendered 0.005 / 0.01 / 0.015 all as "0",
+    // so small-scale bar and line axes read as a column of zeros
+    expect(compactNumber(0.005)).toBe("0.005");
+    expect(compactNumber(0.01)).toBe("0.01");
+    expect(compactNumber(0.1)).toBe("0.1");
+    expect(new Set([0, 0.005, 0.01, 0.015, 0.02].map(compactNumber)).size).toBe(5);
+  });
+
+  it("keeps ticks above 1 that sit close together distinguishable", () => {
+    // The tick spacing decides the precision, not a magnitude rule
+    expect(compactNumber(1.005)).toBe("1.005");
+    expect(compactNumber(1.01)).toBe("1.01");
+    expect(new Set([1, 1.005, 1.01, 1.015, 1.02].map(compactNumber)).size).toBe(5);
+  });
+
+  it("strips float noise from generated ticks", () => {
+    expect(compactNumber(0.1 + 0.2)).toBe("0.3");
+  });
+
+  it("passes non-numeric values through", () => {
+    expect(compactNumber("abc")).toBe("abc");
+    expect(compactNumber(null)).toBe("0");
   });
 });

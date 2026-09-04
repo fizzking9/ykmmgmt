@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import VisualizationsListPage from "@/pages/VisualizationsListPage";
@@ -88,6 +88,20 @@ vi.mock("@/hooks/useVisualizations", () => ({
 vi.mock("html2canvas", () => ({
   default: vi.fn(),
 }));
+
+// ── CSV export endpoint mocks (table rows download from /export) ─────────
+
+const fetchMock = vi.fn();
+const createObjectUrlMock = vi.fn(() => "blob:mock-url");
+
+vi.stubGlobal("fetch", fetchMock);
+Object.defineProperty(URL, "createObjectURL", { value: createObjectUrlMock });
+Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn() });
+
+afterEach(() => {
+  fetchMock.mockClear();
+  createObjectUrlMock.mockClear();
+});
 
 // Mock recharts to avoid rendering issues in jsdom
 vi.mock("recharts", () => ({
@@ -206,5 +220,40 @@ describe("VisualizationsListPage", () => {
     fireEvent.click(deleteButtons[0]);
     fireEvent.click(screen.getByText("确定"));
     expect(deleteMutateMock).toHaveBeenCalledWith("viz-bar", expect.anything());
+  });
+
+  // ── Export: table → CSV download, chart → PNG capture ────────────────
+
+  it("table export downloads CSV from the export endpoint", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(["\ufeff订单号\nA001"], { type: "text/csv" }),
+    });
+    renderPage();
+
+    // Row order follows the mock list: bar first, table second
+    const rows = screen.getAllByRole("row").slice(1);
+    fireEvent.click(within(rows[1]).getByText("导出"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/visualizations/viz-table/export",
+        { credentials: "include" },
+      );
+    });
+    // The fetched blob is turned into a browser download
+    expect(createObjectUrlMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("chart export does not call the CSV export endpoint", () => {
+    renderPage();
+    const rows = screen.getAllByRole("row").slice(1);
+    // Bar (non-table) export goes through the html2canvas PNG queue instead
+    fireEvent.click(within(rows[0]).getByText("导出"));
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/visualizations/viz-bar/export",
+      expect.anything(),
+    );
   });
 });

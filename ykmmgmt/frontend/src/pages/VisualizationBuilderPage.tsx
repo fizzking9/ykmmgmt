@@ -132,11 +132,16 @@ const LEGEND_STYLE: React.CSSProperties = {
 
 /** Compact number for Y-axis ticks: 1.2万 / 3.5亿 */
 function trimZero(n: number): string {
-  const s = Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1);
-  return s.endsWith(".0") ? s.slice(0, -2) : s;
+  if (Number.isInteger(n)) return String(n);
+  // Show the tick value as-is (6 decimals strips float noise such as
+  // 0.30000000000000004). Recharts generates "nice" ticks (steps of
+  // 1/2/5 × 10^k) from the data range, so the spacing itself decides the
+  // precision: 0.005-scale and 1.005-scale axes both stay distinguishable,
+  // where a fixed decimal count collapsed them (0.005 → "0", 1.005 → "1").
+  return String(Number(n.toFixed(6)));
 }
 
-function compactNumber(value: unknown): string {
+export function compactNumber(value: unknown): string {
   const num = Number(value);
   if (isNaN(num)) return String(value ?? "");
   const abs = Math.abs(num);
@@ -525,16 +530,28 @@ export default function VisualizationBuilderPage() {
   // ── Columns from view data ─────────────────────────────────────────────
   const columns = useMemo(() => viewData?.columns ?? [], [viewData]);
   const rows = useMemo(() => viewData?.rows ?? [], [viewData]);
+  // Declared DB types from the backend. Value-based inference is only a
+  // fallback — numeric-looking strings (stock codes, order numbers) must
+  // stay categorical when the schema says text.
+  const columnTypes = useMemo(() => viewData?.column_types ?? {}, [viewData]);
 
   const numericColumns = useMemo(() => {
     if (!rows.length || !columns.length) return [];
-    return columns.filter((col) => isNumericColumn(rows.map((r) => r[col])));
-  }, [columns, rows]);
+    return columns.filter((col) => {
+      const declared = columnTypes[col];
+      if (declared) return declared === "number";
+      return isNumericColumn(rows.map((r) => r[col]));
+    });
+  }, [columns, rows, columnTypes]);
 
   const dateColumns = useMemo(() => {
     if (!rows.length || !columns.length) return [];
-    return columns.filter((col) => isDateColumn(rows.map((r) => r[col])));
-  }, [columns, rows]);
+    return columns.filter((col) => {
+      const declared = columnTypes[col];
+      if (declared) return declared === "date";
+      return isDateColumn(rows.map((r) => r[col]));
+    });
+  }, [columns, rows, columnTypes]);
 
   // ── Selected view display name ─────────────────────────────────────────
   const selectedViewName = useMemo(() => {

@@ -56,9 +56,7 @@ class ProfileUpdate(BaseModel):
     ``current_password`` is required only when changing the password —
     username changes are authorized simply by owning the session."""
 
-    current_password: str | None = Field(
-        None, min_length=1, max_length=200, description="当前密码（修改密码时必填）"
-    )
+    current_password: str | None = Field(None, min_length=1, max_length=200, description="当前密码（修改密码时必填）")
     username: str | None = Field(None, min_length=3, max_length=100, description="新用户名（3-100 字符）")
     new_password: str | None = Field(None, min_length=8, max_length=200, description="新密码（至少 8 位）")
 

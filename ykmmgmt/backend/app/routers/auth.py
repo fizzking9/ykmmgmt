@@ -108,10 +108,7 @@ async def update_profile(
     changing the password; username changes need no re-authentication.
     """
     if body.new_password is not None:
-        if (
-            not body.current_password
-            or not verify_password(body.current_password, user.password_hash)
-        ):
+        if not body.current_password or not verify_password(body.current_password, user.password_hash):
             raise HTTPException(status_code=400, detail="当前密码不正确")
         user.password_hash = hash_password(body.new_password)
 

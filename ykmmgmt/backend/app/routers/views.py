@@ -26,6 +26,58 @@ from app.services.view_sql_builder import SQLBuildError, ViewSQLBuilder
 router = APIRouter(prefix="/api", tags=["views"])
 
 
+# ── Column type categories ───────────────────────────────────────────────────
+
+# Coarse category per PostgreSQL type OID. asyncpg exposes OIDs as the
+# type_code of the DBAPI cursor description. OIDs not listed here are
+# omitted so the frontend falls back to value-based inference.
+_PG_OID_CATEGORIES: dict[int, str] = {
+    16: "boolean",  # bool
+    20: "number",  # int8
+    21: "number",  # int2
+    23: "number",  # int4
+    26: "number",  # oid
+    700: "number",  # float4
+    701: "number",  # float8
+    1700: "number",  # numeric
+    18: "text",  # char
+    19: "text",  # name
+    25: "text",  # text
+    114: "text",  # json
+    1042: "text",  # bpchar
+    1043: "text",  # varchar
+    2950: "text",  # uuid
+    3802: "text",  # jsonb
+    1082: "date",  # date
+    1114: "date",  # timestamp
+    1184: "date",  # timestamptz
+}
+
+
+def column_type_categories(result) -> dict[str, str]:
+    """Extract coarse per-column type categories from an executed SELECT.
+
+    Reads the DBAPI cursor description, which for asyncpg carries the
+    PostgreSQL type OID of each output column — this reflects the *live*
+    schema, so schema edits (e.g. Integer → String via the Schema Manager)
+    are picked up immediately without any caching. Unknown OIDs are
+    omitted from the mapping.
+    """
+    try:
+        description = result.cursor.description
+    except Exception:  # noqa: BLE001 — any driver quirk disables typing info
+        return {}
+    if not description:
+        return {}
+    categories: dict[str, str] = {}
+    for column in description:
+        name, type_code = column[0], column[1]
+        category = _PG_OID_CATEGORIES.get(type_code)
+        if category:
+            categories[name] = category
+    return categories
+
+
 def _get_model_registry() -> dict:
     """Build a {table_name: model_class} dict from registered tables."""
     registry: dict = {}
@@ -262,6 +314,7 @@ async def get_view_data(
         ) from e
 
     columns = list(data_result.keys())
+    column_types = column_type_categories(data_result)
 
     # Serialize rows
     import datetime as dt
@@ -286,6 +339,7 @@ async def get_view_data(
         page=1 if fetch_all else page,
         size=total if fetch_all else size,
         columns=columns,
+        column_types=column_types,
     )
 
 

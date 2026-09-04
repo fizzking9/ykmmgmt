@@ -50,6 +50,7 @@ export function VisualizationExportCanvas({
           config={data.config_json}
           columns={data.columns}
           rows={data.rows}
+          columnTypes={data.column_types}
           height={480}
         />
       ) : (

@@ -100,6 +100,8 @@ export interface ViewDataResponse {
   page: number;
   size: number;
   columns: string[];
+  /** Coarse DB type per column ("number"/"date"/"text"/"boolean"); missing entries fall back to value inference. */
+  column_types?: Record<string, string>;
 }
 
 export interface ColumnInfo {

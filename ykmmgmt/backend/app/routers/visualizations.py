@@ -1,10 +1,16 @@
 """Visualization CRUD endpoints — /api/visualizations."""
 
+import csv
 import datetime as dt
+import io
+import re
 import uuid
+from collections.abc import Iterator
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +19,7 @@ from app.core.security import require_admin
 from app.models.user import User
 from app.models.view import View
 from app.models.visualization import Visualization
-from app.routers.views import _build_sql_from_config
+from app.routers.views import _build_sql_from_config, column_type_categories
 from app.schemas.view import ViewConfig
 from app.schemas.visualization import (
     VisualizationCreate,
@@ -164,7 +170,7 @@ async def delete_visualization(
     await db.flush()
 
 
-# ── Data Endpoint ───────────────────────────────────────────────────────────
+# ── Data / Export Endpoints ─────────────────────────────────────────────────
 
 
 Granularity = Literal["year", "quarter", "month", "week", "day"]
@@ -314,20 +320,19 @@ def _rebucket_rows(
     return kept_cols, result_rows
 
 
-@router.get("/visualizations/{viz_id}/data", response_model=VisualizationDataResponse)
-async def get_visualization_data(
+async def _load_visualization_data(
     viz_id: uuid.UUID,
-    start: str | None = Query(None, description="时间筛选起始（ISO 日期），仅当可视化配置了时间列时生效"),
-    end: str | None = Query(None, description="时间筛选结束（ISO 日期），仅当可视化配置了时间列时生效"),
-    granularity: Granularity | None = Query(None, description="时间粒度重分桶：year/quarter/month/week/day"),
-    agg: AggFunction | None = Query(None, description="重分桶聚合函数：SUM/COUNT/AVG/MIN/MAX"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Execute the associated view's SQL and return full result set for charting.
+    db: AsyncSession,
+    start: str | None,
+    end: str | None,
+    granularity: Granularity | None,
+    agg: AggFunction | None,
+) -> tuple[str, VisualizationDataResponse]:
+    """Execute the visualization's view SQL with optional time-profile params.
 
-    Optional time-profile params (``start``/``end``/``granularity``/``agg``)
-    apply only when the visualization's ``config_json.date_column`` is set;
-    otherwise they are ignored.
+    Returns the visualization name alongside the data response. Shared by the
+    ``/data`` (JSON) and ``/export`` (CSV) endpoints so both apply identical
+    query logic.
     """
     stmt = select(Visualization).where(Visualization.id == viz_id)
     result = await db.execute(stmt)
@@ -364,6 +369,7 @@ async def get_visualization_data(
         ) from e
 
     columns = list(data_result.keys())
+    column_types = column_type_categories(data_result)
 
     # Serialize rows
     rows: list[dict] = []
@@ -398,10 +404,109 @@ async def get_visualization_data(
             rows = [r for r in rows if _in_date_range(r.get(date_column), start_dt, end_dt)]
         if granularity:
             columns, rows = _rebucket_rows(rows, date_column, granularity, agg or "SUM")
+            # Re-bucketed output is re-typed: the bucket key is a date,
+            # the aggregated value columns are numeric.
+            column_types = {c: ("date" if c == date_column else "number") for c in columns}
 
-    return VisualizationDataResponse(
+    return viz.name, VisualizationDataResponse(
         columns=columns,
         rows=rows,
         chart_type=viz.chart_type,
         config_json=viz.config_json,
+        column_types=column_types,
+    )
+
+
+@router.get("/visualizations/{viz_id}/data", response_model=VisualizationDataResponse)
+async def get_visualization_data(
+    viz_id: uuid.UUID,
+    start: str | None = Query(None, description="时间筛选起始（ISO 日期），仅当可视化配置了时间列时生效"),
+    end: str | None = Query(None, description="时间筛选结束（ISO 日期），仅当可视化配置了时间列时生效"),
+    granularity: Granularity | None = Query(None, description="时间粒度重分桶：year/quarter/month/week/day"),
+    agg: AggFunction | None = Query(None, description="重分桶聚合函数：SUM/COUNT/AVG/MIN/MAX"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Execute the associated view's SQL and return full result set for charting.
+
+    Optional time-profile params (``start``/``end``/``granularity``/``agg``)
+    apply only when the visualization's ``config_json.date_column`` is set;
+    otherwise they are ignored.
+    """
+    _, data = await _load_visualization_data(viz_id, db, start, end, granularity, agg)
+    return data
+
+
+# ── CSV Export ─────────────────────────────────────────────────────────────
+
+
+_INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\r\n\t]')
+
+_CSV_FLUSH_ROWS = 500
+
+
+def _sanitize_export_filename(name: str) -> str:
+    """Strip filesystem-unsafe characters from a visualization name."""
+    cleaned = _INVALID_FILENAME_CHARS.sub("_", name).strip().strip(".")
+    return cleaned or "导出"
+
+
+def _csv_cell(value: object) -> object:
+    """Normalize one cell for CSV output (None → empty, dates → ISO)."""
+    if value is None:
+        return ""
+    if isinstance(value, (dt.datetime, dt.date)):
+        return value.isoformat()
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    return value
+
+
+def _rows_to_csv_chunks(columns: list[str], rows: list[dict]) -> Iterator[str]:
+    """Yield the CSV as string chunks: UTF-8 BOM first, then row batches."""
+    buffer = io.StringIO()
+    buffer.write("\ufeff")  # BOM so Excel decodes Chinese correctly
+    writer = csv.writer(buffer)
+    writer.writerow(columns)
+    pending = 0
+    for row in rows:
+        writer.writerow([_csv_cell(row.get(col)) for col in columns])
+        pending += 1
+        if pending >= _CSV_FLUSH_ROWS:
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
+            pending = 0
+    if buffer.tell() > 0:
+        yield buffer.getvalue()
+
+
+@router.get("/visualizations/{viz_id}/export")
+async def export_visualization_csv(
+    viz_id: uuid.UUID,
+    start: str | None = Query(None, description="时间筛选起始（ISO 日期），仅当可视化配置了时间列时生效"),
+    end: str | None = Query(None, description="时间筛选结束（ISO 日期），仅当可视化配置了时间列时生效"),
+    granularity: Granularity | None = Query(None, description="时间粒度重分桶：year/quarter/month/week/day"),
+    agg: AggFunction | None = Query(None, description="重分桶聚合函数：SUM/COUNT/AVG/MIN/MAX"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a table visualization as CSV (UTF-8 with BOM, Excel-ready).
+
+    Only the ``table`` chart type supports CSV export; other chart types
+    should be exported as PNG from the frontend. Accepts the same optional
+    time-profile params as the ``/data`` endpoint and applies them
+    identically.
+    """
+    viz_name, data = await _load_visualization_data(viz_id, db, start, end, granularity, agg)
+    if data.chart_type != "table":
+        raise HTTPException(
+            status_code=422,
+            detail="仅表格类可视化支持 CSV 导出，图表类可视化请使用 PNG 导出",
+        )
+
+    safe_name = _sanitize_export_filename(viz_name)
+    disposition = f"attachment; filename=\"export.csv\"; filename*=UTF-8''{quote(safe_name)}.csv"
+    return StreamingResponse(
+        _rows_to_csv_chunks(data.columns, data.rows),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": disposition},
     )
