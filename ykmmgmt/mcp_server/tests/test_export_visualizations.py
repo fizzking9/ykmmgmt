@@ -1,5 +1,7 @@
-"""Tests for the export_visualizations tool (CSV/PNG paths, summary, errors)."""
+"""Tests for the export_visualizations tool (inline content, CSV/PNG paths, errors)."""
 
+import base64
+import json
 from typing import Any
 
 from mcp_server.tools.export_visualizations import handler, sanitize_filename
@@ -75,12 +77,20 @@ def _assert_png_file(path) -> None:
     assert content.startswith(PNG_SIGNATURE), "exported file is not a PNG"
 
 
+async def _run(client, args: dict) -> tuple[dict, list]:
+    """Call the handler; split the summary block from the content blocks."""
+    out = await handler(client, args)
+    assert not isinstance(out, dict), f"unexpected error result: {out}"
+    assert out[0].type == "text"
+    return json.loads(out[0].text), out[1:]
+
+
 # ── Path selection: table → CSV, other → PNG ────────────────────────────────
 
 
 async def test_table_viz_writes_csv_file(tmp_path):
     client = FakeClient([TABLE_VIZ], _responses())
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, blocks = await _run(client, {"output_dir": str(tmp_path)})
 
     assert result["exported"] == 1
     assert result["failed"] == 0
@@ -91,11 +101,14 @@ async def test_table_viz_writes_csv_file(tmp_path):
     assert entry["file"].endswith("退款明细表.csv")
     content = (tmp_path / "退款明细表.csv").read_text(encoding="utf-8")
     assert content.startswith("\ufeff")  # BOM preserved byte-for-byte
+    # The CSV is also inlined as a text block (BOM stripped for parsing)
+    assert len(blocks) == 1 and blocks[0].type == "text"
+    assert blocks[0].text == content.lstrip("\ufeff")
 
 
 async def test_non_table_viz_writes_rendered_png(tmp_path):
     client = FakeClient([BAR_VIZ], _responses())
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, blocks = await _run(client, {"output_dir": str(tmp_path)})
 
     entry = result["files"][0]
     assert entry["chart_type"] == "bar"
@@ -105,6 +118,10 @@ async def test_non_table_viz_writes_rendered_png(tmp_path):
     _assert_png_file(tmp_path / "月度柱状图.png")
     # No raw-data JSON file is written anymore
     assert not (tmp_path / "月度柱状图.json").exists()
+    # The rendered chart is inlined as a base64 PNG image block
+    assert len(blocks) == 1 and blocks[0].type == "image"
+    assert blocks[0].mime_type == "image/png"
+    assert base64.b64decode(blocks[0].data).startswith(PNG_SIGNATURE)
 
 
 # ── Filename sanitization ────────────────────────────────────────────────────
@@ -119,7 +136,7 @@ def test_sanitize_filename_strips_unsafe_characters():
 async def test_unsafe_name_produces_safe_file(tmp_path):
     viz = {**TABLE_VIZ, "name": "销售/华北:2026"}
     client = FakeClient([viz], _responses())
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, _ = await _run(client, {"output_dir": str(tmp_path)})
     assert result["exported"] == 1
     assert (tmp_path / "销售_华北_2026.csv").exists()
 
@@ -134,26 +151,38 @@ async def test_duplicate_sanitized_names_get_unique_suffixes(tmp_path):
         "/api/visualizations/id-2/data": BAR_DATA,
     }
     client = FakeClient(vizzes, responses)
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, blocks = await _run(client, {"output_dir": str(tmp_path)})
 
     assert result["exported"] == 2
     files = sorted(f["file"] for f in result["files"])
     assert files[0].endswith("报表.png")
     assert files[1].endswith("报表_2.png")
+    assert len(blocks) == 2  # one image block per export, in summary order
 
 
-# ── Summary shape / context-window protection ────────────────────────────────
+# ── Inline content delivery ──────────────────────────────────────────────
 
 
-async def test_summary_never_includes_row_data(tmp_path):
+async def test_no_output_dir_returns_inline_content_only():
+    """output_dir is optional — content blocks are returned without files."""
     client = FakeClient([TABLE_VIZ, BAR_VIZ], _responses())
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, blocks = await _run(client, {})
 
-    serialized = str(result)
-    assert "A001" not in serialized  # no CSV cell values inline
-    assert "2026-06" not in serialized  # no chart row values inline
     assert result["exported"] == 2
-    assert {f["chart_type"] for f in result["files"]} == {"table", "bar"}
+    assert "output_dir" not in result
+    assert "file" not in result["files"][0]
+    assert [b.type for b in blocks] == ["text", "image"]  # CSV text + PNG image
+
+
+async def test_summary_block_itself_stays_compact(tmp_path):
+    """The summary JSON never carries dataset values (blocks do, by design)."""
+    client = FakeClient([TABLE_VIZ, BAR_VIZ], _responses())
+    out = await handler(client, {"output_dir": str(tmp_path)})
+    summary_text = out[0].text
+
+    assert "A001" not in summary_text  # no CSV cell values in the summary
+    assert "2026-06" not in summary_text  # no chart row values in the summary
+    assert "exported" in summary_text
 
 
 # ── Error handling ──────────────────────────────────────────────────────────
@@ -163,13 +192,14 @@ async def test_per_viz_failure_does_not_abort_batch(tmp_path):
     responses = _responses()
     responses["/api/visualizations/id-bar/data"] = RuntimeError("boom")
     client = FakeClient([TABLE_VIZ, BAR_VIZ], responses)
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, blocks = await _run(client, {"output_dir": str(tmp_path)})
 
     assert result["exported"] == 1
     assert result["failed"] == 1
     failure = result["failures"][0]
     assert failure["visualization"] == "月度柱状图"
     assert "boom" in failure["error"]
+    assert len(blocks) == 1  # only the successful export is inlined
 
 
 async def test_render_failure_recorded_as_failure(tmp_path):
@@ -180,7 +210,7 @@ async def test_render_failure_recorded_as_failure(tmp_path):
         "config_json": {"y_columns": ["金额"]},  # missing x_column
     }
     client = FakeClient([BAR_VIZ], responses)
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, _ = await _run(client, {"output_dir": str(tmp_path)})
 
     assert result["exported"] == 0
     assert result["failed"] == 1
@@ -191,7 +221,7 @@ async def test_export_endpoint_error_recorded_as_failure(tmp_path):
     responses = _responses()
     responses["/api/visualizations/id-table/export"] = (422, '{"detail": "仅表格类可视化支持 CSV 导出"}')
     client = FakeClient([TABLE_VIZ], responses)
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, _ = await _run(client, {"output_dir": str(tmp_path)})
 
     assert result["exported"] == 0
     assert result["failed"] == 1
@@ -200,7 +230,7 @@ async def test_export_endpoint_error_recorded_as_failure(tmp_path):
 
 async def test_unknown_requested_ids_reported_as_failures(tmp_path):
     client = FakeClient([TABLE_VIZ], _responses())
-    result = await handler(
+    result, _ = await _run(
         client,
         {"output_dir": str(tmp_path), "visualization_ids": ["id-table", "missing-id"]},
     )
@@ -213,19 +243,13 @@ async def test_unknown_requested_ids_reported_as_failures(tmp_path):
 
 async def test_requested_ids_filter_the_export_set(tmp_path):
     client = FakeClient([TABLE_VIZ, BAR_VIZ], _responses())
-    result = await handler(
+    result, _ = await _run(
         client,
         {"output_dir": str(tmp_path), "visualization_ids": ["id-bar"]},
     )
     assert result["exported"] == 1
     assert result["files"][0]["chart_type"] == "bar"
     assert not (tmp_path / "退款明细表.csv").exists()
-
-
-async def test_missing_output_dir_returns_error(tmp_path):
-    client = FakeClient([TABLE_VIZ], _responses())
-    result = await handler(client, {})
-    assert "error" in result
 
 
 async def test_invalid_output_dir_returns_error(tmp_path):
@@ -258,7 +282,8 @@ async def test_backend_error_on_list_returns_error(tmp_path):
 
 async def test_empty_visualization_set_exports_nothing(tmp_path):
     client = FakeClient([], _responses())
-    result = await handler(client, {"output_dir": str(tmp_path)})
+    result, blocks = await _run(client, {"output_dir": str(tmp_path)})
     assert result["exported"] == 0
     assert result["failed"] == 0
     assert result["files"] == []
+    assert blocks == []
