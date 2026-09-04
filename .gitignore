@@ -39,6 +39,9 @@ backups/
 # Container file logs (logs/backend, logs/db, logs/frpc)
 logs/
 
+# MCP export_visualizations output (prod compose bind mount ./mcp_exports:/exports)
+mcp_exports/
+
 # Build
 *.log
 # setuptools build dirs (e.g., ykmmgmt/mcp_server/build after pip wheel)

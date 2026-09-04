@@ -110,6 +110,10 @@ services:
       YKM_SERVICE_USERNAME: ${YKM_SERVICE_USERNAME:?YKM_SERVICE_USERNAME is required in deploy/.env.prod}
       YKM_SERVICE_PASSWORD: ${YKM_SERVICE_PASSWORD:?YKM_SERVICE_PASSWORD is required in deploy/.env.prod}
       YKM_MCP_API_KEY: ${YKM_MCP_API_KEY:?YKM_MCP_API_KEY is required in deploy/.env.prod}
+    volumes:
+      # Export target for the export_visualizations tool — agents pass
+      # output_dir=/exports, files land in ./mcp_exports on the host.
+      - ./mcp_exports:/exports
     depends_on:
       - backend
     networks:

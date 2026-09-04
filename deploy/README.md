@@ -167,6 +167,9 @@ Log in, upload a small CSV, and confirm it appears in the Data Browser.
 3. Point an MCP client (Claude Desktop / Inspector, streamable HTTP
    transport) at `http://<CLOUD_SERVER_IP>/mcp` with header
    `Authorization: Bearer <YKM_MCP_API_KEY>` and call `export_visualizations`.
+   - `output_dir` must be a path **inside the MCP container** — use
+     `/exports`, which is bind-mounted to `./mcp_exports` on the host so
+     exported PNG/CSV files stay accessible after the call.
 
 Without the API key every request to `/mcp` gets a 401.
 
