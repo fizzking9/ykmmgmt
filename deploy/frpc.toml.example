@@ -31,3 +31,12 @@ type = "tcp"
 localIP = "frontend"
 localPort = 80
 remotePort = 7001
+
+# Tunnel the MCP server (streamable HTTP) to the cloud server for external
+# AI agents — cloud Nginx proxies /mcp to 127.0.0.1:7002 (see deploy/README.md).
+[[proxies]]
+name = "ykmmgmt-mcp"
+type = "tcp"
+localIP = "mcp_server"
+localPort = 8001
+remotePort = 7002

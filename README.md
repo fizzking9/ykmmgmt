@@ -31,6 +31,10 @@ Releases: GitHub Actions runs lint + tests on every push to `main`, builds both 
 
 ### 1. Database (PostgreSQL)
 
+**One-shot startup:** `.\scripts\dev.ps1` starts everything below in one go
+(db + backend + frontend + MCP server, in the background, logs in
+`logs\dev\`). Stop with `.\scripts\dev.ps1 -Stop`. The manual steps:
+
 ```bash
 # Start PostgreSQL 16 in a Docker container (host port 15432)
 docker compose up -d

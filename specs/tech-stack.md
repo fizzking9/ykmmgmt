@@ -35,6 +35,21 @@
 
 Data from external sources (CSVs, APIs) is **normalized and stored** in PostgreSQL — the dashboard never queries sources directly; it always reads from the curated local DB.
 
+## MCP Server (Phase 14)
+
+| Layer | Choice | Rationale |
+|-------|--------|-----------|
+| **Language** | Python 3.12+ | Same ecosystem as the backend; shares conda env |
+| **MCP SDK** | `mcp` (Python) | Official Model Context Protocol SDK; streamable HTTP transport for remote MCP clients |
+| **Transport** | Streamable HTTP (persistent service) | Replaces the original stdio choice — a network-reachable service fits remote agents and the Docker/frpc deploy topology better than a per-client local subprocess |
+| **Chart rendering** | matplotlib (in the MCP server) | Server-side PNG rendering of non-table charts — deterministic output, correct `config_json` interpretation guaranteed by code, and raw data never enters the agent's context. Accepts the double implementation (Recharts for UI, matplotlib for MCP) in exchange for reliability — agent-side rendering (raw JSON + SKILL) was tried and reverted: non-deterministic output, misread variables, per-run scripts |
+| **Backend communication** | httpx | Async HTTP client to call the FastAPI backend's REST API |
+| **Backend auth** | Service account JWT | MCP server authenticates with the backend via env-var credentials, not user sessions |
+| **MCP client auth** | API key (`Authorization: Bearer`) | Incoming MCP connections must present a valid `YKM_MCP_API_KEY`; requests without one are rejected (401) |
+| **Deployment** | Docker Compose service + GHCR image | Runs as a persistent service in the production stack, exposed to external agents via the frpc tunnel |
+
+The MCP server is a **persistent HTTP service** (`ykmmgmt/mcp_server/`), deployed as a Docker Compose service in the production stack — not part of the FastAPI app, and no longer a per-client subprocess. It exposes YKMMgmt capabilities as MCP tools that external AI agents discover and invoke over streamable HTTP.
+
 ## Infrastructure & DevOps
 
 | Layer | Choice |

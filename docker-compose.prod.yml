@@ -95,6 +95,26 @@ services:
     networks:
       - internal
 
+  # MCP server for external AI agents — streamable HTTP on :8001, exposed
+  # to the cloud entry through its own frpc tunnel proxy (remote port 7002).
+  # The service account is a regular backend user (e.g. an admin created via
+  # the user management UI) whose credentials live in deploy/.env.prod.
+  mcp_server:
+    image: ${MCP_IMAGE:-ykmmgmt-mcp:dev}
+    build: ./ykmmgmt/mcp_server
+    container_name: ykmmgmt-prod-mcp
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      YKM_BACKEND_URL: http://backend:8000
+      YKM_SERVICE_USERNAME: ${YKM_SERVICE_USERNAME:?YKM_SERVICE_USERNAME is required in deploy/.env.prod}
+      YKM_SERVICE_PASSWORD: ${YKM_SERVICE_PASSWORD:?YKM_SERVICE_PASSWORD is required in deploy/.env.prod}
+      YKM_MCP_API_KEY: ${YKM_MCP_API_KEY:?YKM_MCP_API_KEY is required in deploy/.env.prod}
+    depends_on:
+      - backend
+    networks:
+      - internal
+
   frpc:
     image: snowdreamtech/frpc:latest
     container_name: ykmmgmt-prod-frpc
@@ -105,6 +125,7 @@ services:
       - ./logs/frpc:/logs
     depends_on:
       - frontend
+      - mcp_server
     networks:
       - internal
 

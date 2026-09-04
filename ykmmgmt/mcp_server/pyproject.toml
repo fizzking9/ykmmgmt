@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ykmmgmt-mcp"
+version = "0.1.0"
+description = "YKMMgmt MCP server — exposes YKMMgmt visualizations to external AI agents over streamable HTTP"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.1,<3",
+    "httpx>=0.27",
+    "matplotlib>=3.9",
+    "starlette>=0.38",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+# Installed command: `ykmmgmt-mcp` starts the streamable-HTTP MCP server
+# from any working directory — no repo checkout, PYTHONPATH, or conda
+# paths needed.
+ykmmgmt-mcp = "mcp_server.__main__:cli"
+
+# The package lives one level up (this pyproject.toml sits INSIDE the
+# mcp_server package directory, next to backend/ and frontend/ siblings).
+[tool.setuptools]
+package-dir = { "" = ".." }
+packages = ["mcp_server", "mcp_server.tools"]

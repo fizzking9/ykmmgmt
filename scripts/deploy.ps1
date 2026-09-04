@@ -3,6 +3,9 @@
 # Usage:  .\scripts\deploy.ps1
 # Requires: one-time `docker login ghcr.io` with a PAT (read:packages),
 #           Docker Desktop running, and deploy/.env.prod configured.
+#
+# `docker compose pull` covers every service image, including the MCP
+# server (MCP_IMAGE) added in Phase 14.
 
 param(
     [string]$EnvFile = "$PSScriptRoot\..\deploy\.env.prod",

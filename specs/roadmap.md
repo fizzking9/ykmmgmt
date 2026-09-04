@@ -89,7 +89,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 - [x] Upload page redesigned into a generic 数据导入 hub — a top panel switches the import method: 上传文件 | 数据抓取 | 导入历史
 - [x] 导入历史 moved from a standalone sidebar page into a tab of the 数据导入 hub (standalone route and nav item removed)
-- [x] 数据抓取 tab rendered as a "coming soon" placeholder (the scraper itself is deferred — see Phase 14)
+- [x] 数据抓取 tab rendered as a "coming soon" placeholder (the scraper itself is deferred — see Phase 15)
 
 ---
 
@@ -336,7 +336,61 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 14 — Platform Data Scraping (Future, Post-Deployment)
+## Phase 14 — MCP Server for External AI Agents
+
+**Goal:** External AI agents (Claude Desktop, etc.) can interact with YKMMgmt through a Model Context Protocol (MCP) server, starting with visualization export and designed for extensibility.
+
+> **Architecture:** A persistent HTTP service (`ykmmgmt/mcp_server/`) using the `mcp` SDK over streamable HTTP transport, deployed as a Docker Compose service alongside the backend/frontend. It communicates with the FastAPI backend over the Docker internal network using a dedicated service account for authentication; incoming MCP client connections are authenticated with an API key. The service is exposed to external agents via the frpc tunnel.
+>
+> **Decision history (transport):** the spec originally chose stdio transport (the MCP client launches the server as a local subprocess). It was replanned to streamable HTTP because a persistent, network-reachable service better fits remote agents and the existing Docker/frpc deploy topology.
+
+### Scalable Tool Framework
+
+- [x] MCP server project scaffold (`ykmmgmt/mcp_server/`) with `mcp` Python SDK, streamable HTTP transport
+- [x] Tool registry pattern — each tool is a self-contained module that registers its name, description, input schema, and handler; adding a new tool = dropping a new file into `tools/`
+- [x] Shared HTTP client for backend API calls with auth (service account JWT from env var)
+- [x] Structured error responses — tool errors return `{error: "..."}` JSON, never raw tracebacks
+- [x] API-key guard on the MCP endpoint — clients send `Authorization: Bearer <YKM_MCP_API_KEY>`; requests without a valid key are rejected (401)
+- [x] Configuration via environment variables: `YKM_BACKEND_URL`, service account credentials, `YKM_MCP_API_KEY`, listen host/port
+
+### Deployment
+
+- [x] `ykmmgmt/mcp_server/Dockerfile` — Python 3.12 image that installs the package and runs the HTTP server
+- [x] `mcp_server` service in `docker-compose.prod.yml` (GHCR image with `build:` fallback) and dev `docker-compose.yml`, on the internal network, `depends_on: backend`
+- [x] frpc `[[proxies]]` entry tunneling the MCP port to the cloud entry, so external agents reach it over the tunnel (same pattern as the frontend)
+- [x] CI builds/pushes `ghcr.io/fizzking9/ykmmgmt-mcp`; `scripts/deploy.ps1` pulls it
+
+### Backend: CSV Export Endpoint for Table Visualizations
+
+- [x] `GET /api/visualizations/{id}/export` — new endpoint that returns a file download response
+  - For **table** chart type: returns CSV (UTF-8 with BOM for Excel compatibility), `Content-Disposition: attachment`
+  - For all other chart types: returns 422 with a message directing the caller to use the data endpoint + client-side rendering
+  - Accepts the same optional time-profile params as the data endpoint (`start`/`end`/`granularity`/`agg`)
+- [x] Frontend change: table-type visualization export button switches from html2canvas PNG capture to downloading from `GET /api/visualizations/{id}/export` (CSV)
+
+### Initial Tool: Export Visualizations (Server-Rendered)
+
+- [x] Tool name: `export_visualizations`
+- [x] Input: `output_dir` (string, path to local folder), optional `visualization_ids` (list of UUIDs to export a subset; omit for all)
+- [x] Behavior (server-side rendering — deterministic chart images produced by the MCP server):
+  - Fetch all saved visualizations from `GET /api/visualizations`
+  - **Table charts** → download CSV from `GET /api/visualizations/{id}/export`
+  - **All other chart types** (bar, line, pie, scatter, histogram, boxplot, kpi_card) → fetch data from `GET /api/visualizations/{id}/data`, render a chart image with the MCP server's matplotlib renderer, write `{sanitized_name}.png` — no raw data files, nothing for the agent to misinterpret
+  - File naming: `{sanitized_visualization_name}.{csv|png}` in the output directory
+  - Return a compact summary: `{exported: N, failed: M, files: [...]}` with per-file preview (chart type, columns, row count) — never full datasets inline, to protect the agent's context window
+- [x] matplotlib renderer module in the MCP server: per-chart-type interpretation of `config_json` (x_column/y_columns, label_column/value_column, bins, category_column…), Chinese font handling (Microsoft YaHei/SimHei fallbacks), style conventions (Chinese titles/axis labels, sorted time axes, descending pie sectors)
+
+> **Decision history:** the spec initially chose agent-side rendering (raw JSON + rendering SKILL). Manual testing with a third-party agent showed non-deterministic output, misinterpreted chart variables, and a fresh .py script per run — reverted to deterministic server-side rendering (the original Phase 14 design).
+
+### Testing
+
+- [x] Unit tests for the tool registry and each tool handler
+- [x] Integration test: over streamable HTTP, the MCP server lists tools, enforces the API key (rejects missing/invalid keys with 401), calls `export_visualizations`, and produces files in a temp directory
+- [ ] Test with an MCP client (Inspector / Claude Desktop HTTP transport) connecting to `http://localhost:8001/mcp` with the API key to verify end-to-end connectivity, including through the frpc tunnel
+
+---
+
+## Phase 15 — Platform Data Scraping (Future, Post-Deployment)
 
 **Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
 

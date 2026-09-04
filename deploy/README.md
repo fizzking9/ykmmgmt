@@ -12,12 +12,14 @@ to the local machine.
 ```
 Browser ──HTTP──> Alibaba Cloud ECS
                     │ Nginx :80  ──> 127.0.0.1:7001 (frp tunnel)
+                    │           └─> /mcp ──> 127.0.0.1:7002 (frp tunnel, MCP)
                     │ frps :7000  <── tunnel ── frpc (local compose stack)
                     ▼
                  Local machine (Docker Compose)
                     │ frontend (Nginx :80, published on host as :8080)
                     │   └─ proxies /api ──> backend :8000
                     │ backend ──> db (postgres:16)
+                    │ mcp_server :8001 (streamable HTTP for AI agents)
 ```
 
 ## Prerequisites
@@ -103,6 +105,20 @@ server {
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+Also add an MCP location to the same server block (one-time — external AI
+agents reach the MCP server at `http://<CLOUD_SERVER_IP>/mcp`):
+
+```nginx
+    location /mcp {
+        proxy_pass http://127.0.0.1:7002;   # frp tunnel port for the MCP server
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_buffering off;                # stream responses straight through
+        proxy_read_timeout 300s;            # long-running chart exports
+        proxy_send_timeout 300s;
+    }
+```
+
 ## Step 3 — Alibaba Cloud console: security group
 
 Open **only** these inbound ports on the ECS instance's security group:
@@ -113,9 +129,9 @@ Open **only** these inbound ports on the ECS instance's security group:
 | 80   | HTTP public entry | 0.0.0.0/0 |
 | 7000 | frps bind (tunnel control) | your IP / restricted if possible |
 
-Do **not** open 7001 — it only needs to be reachable from the server itself
-(Nginx proxies to 127.0.0.1:7001). frp's `remotePort` traffic arrives over the
-7000 control connection.
+Do **not** open 7001 or 7002 — they only need to be reachable from the
+server itself (Nginx proxies to 127.0.0.1:7001 / 127.0.0.1:7002). frp's
+`remotePort` traffic arrives over the 7000 control connection.
 
 ## Step 4 — Local machine: start the stack
 
@@ -139,6 +155,20 @@ docker logs ykmmgmt-prod-frpc    # expect: "login to server success"
 
 Browse to `http://<CLOUD_SERVER_IP>/` — you should see the YKMMgmt login page.
 Log in, upload a small CSV, and confirm it appears in the Data Browser.
+
+## Step 6 — MCP endpoint for external AI agents
+
+1. Create a service account (a regular user, e.g. an admin named `svc-mcp`)
+   via the app's user management UI.
+2. Fill in the MCP section of `deploy/.env.prod`
+   (`YKM_SERVICE_USERNAME`, `YKM_SERVICE_PASSWORD`, `YKM_MCP_API_KEY` —
+   see `deploy/.env.prod.example`), then restart the stack so the
+   `mcp_server` service picks up the credentials.
+3. Point an MCP client (Claude Desktop / Inspector, streamable HTTP
+   transport) at `http://<CLOUD_SERVER_IP>/mcp` with header
+   `Authorization: Bearer <YKM_MCP_API_KEY>` and call `export_visualizations`.
+
+Without the API key every request to `/mcp` gets a 401.
 
 ## Troubleshooting
 

@@ -41,6 +41,8 @@ logs/
 
 # Build
 *.log
+# setuptools build dirs (e.g., ykmmgmt/mcp_server/build after pip wheel)
+build/
 
 # Sample data (not tracked)
 *.csv
@@ -52,3 +54,7 @@ tmp_export/
 # Runtime-generated schema migrations (created by the Schema Manager at
 # runtime; dynamic tables are restored from DB reflection on startup)
 ykmmgmt/runtime_migrations/
+
+# Agent tool artifacts (not project code)
+.agents/
+skills-lock.json
