@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog } from "@/components/ui/dialog";
 import {
   useDashboards,
   useUpdateDashboard,
@@ -76,34 +77,30 @@ function RenameDialog({ target, onClose }: { target: DashboardListResponse; onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-        <h3 className="text-lg font-semibold">重命名看板</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          为看板「{target.name}」输入新名称（名称必须唯一）。
-        </p>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="输入新名称"
-          className="mt-3 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-        />
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={updateDashboard.isPending}>
-            取消
-          </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={!name.trim() || name.trim() === target.name || updateDashboard.isPending}
-          >
-            {updateDashboard.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-            确定
-          </Button>
-        </div>
+    <Dialog open onClose={onClose} title="重命名看板">
+      <p className="text-sm text-muted-foreground">
+        为看板「{target.name}」输入新名称（名称必须唯一）。
+      </p>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="输入新名称"
+        className="mt-3 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose} disabled={updateDashboard.isPending}>
+          取消
+        </Button>
+        <Button
+          onClick={handleConfirm}
+          disabled={!name.trim() || name.trim() === target.name || updateDashboard.isPending}
+        >
+          {updateDashboard.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+          确定
+        </Button>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -118,34 +115,30 @@ function DeleteConfirmDialog({
 }) {
   const deleteDashboard = useDeleteDashboard();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-        <h3 className="text-lg font-semibold">确认删除</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          确定要删除看板「{target.name}」吗？此操作不可撤销。
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={deleteDashboard.isPending}>
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={deleteDashboard.isPending}
-            onClick={() => {
-              deleteDashboard.mutate(target.id, { onSuccess: () => onClose() });
-            }}
-          >
-            {deleteDashboard.isPending ? (
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="mr-1 h-4 w-4" />
-            )}
-            确定
-          </Button>
-        </div>
+    <Dialog open onClose={onClose} title="确认删除">
+      <p className="text-sm text-muted-foreground">
+        确定要删除看板「{target.name}」吗？此操作不可撤销。
+      </p>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose} disabled={deleteDashboard.isPending}>
+          取消
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={deleteDashboard.isPending}
+          onClick={() => {
+            deleteDashboard.mutate(target.id, { onSuccess: () => onClose() });
+          }}
+        >
+          {deleteDashboard.isPending ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-1 h-4 w-4" />
+          )}
+          确定
+        </Button>
       </div>
-    </div>
+    </Dialog>
   );
 }
 

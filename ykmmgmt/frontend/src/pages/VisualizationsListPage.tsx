@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog } from "@/components/ui/dialog";
 import { useViews } from "@/hooks/useViews";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
@@ -145,30 +146,24 @@ function DeleteConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      {/* Dialog */}
-      <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-        <h3 className="text-lg font-semibold">确认删除</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          确定要删除可视化「{vizName}」吗？此操作不可撤销。
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isPending}>
-            取消
-          </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
-            {isPending ? (
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="mr-1 h-4 w-4" />
-            )}
-            确定
-          </Button>
-        </div>
+    <Dialog open onClose={onCancel} title="确认删除">
+      <p className="text-sm text-muted-foreground">
+        确定要删除可视化「{vizName}」吗？此操作不可撤销。
+      </p>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel} disabled={isPending}>
+          取消
+        </Button>
+        <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+          {isPending ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-1 h-4 w-4" />
+          )}
+          确定
+        </Button>
       </div>
-    </div>
+    </Dialog>
   );
 }
 

@@ -65,9 +65,7 @@ describe("AuthContext — login/logout flow", () => {
   });
 
   it("treats a 401 /me as anonymous", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
-      jsonResponse({ detail: "未登录" }, 401),
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => jsonResponse({ detail: "未登录" }, 401));
 
     render(
       <QueryClientProvider client={createQueryClient()}>

@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render() {
     if (this.state.error) {
       return (
-        <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-8 text-center">
           <h1 className="text-2xl font-semibold">页面出错了</h1>
           <p className="max-w-md text-muted-foreground">
             页面渲染时发生异常，请刷新重试。如果问题持续存在，请联系管理员并提供错误信息。

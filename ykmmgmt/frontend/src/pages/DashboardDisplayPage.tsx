@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -386,7 +387,12 @@ export default function DashboardDisplayPage() {
       {/* Header */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/dashboards")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="返回看板列表"
+            onClick={() => navigate("/dashboards")}
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -614,7 +620,13 @@ export default function DashboardDisplayPage() {
           <div className="flex h-[88vh] w-[94vw] max-w-6xl flex-col rounded-lg bg-background shadow-xl">
             <div className="flex items-center justify-between border-b px-4 py-3">
               <h3 className="text-base font-semibold">{tileTitle(maxTile)}</h3>
-              <Button variant="ghost" size="sm" onClick={() => setMaxTile(null)} title="关闭">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMaxTile(null)}
+                aria-label="关闭全屏预览"
+                title="关闭"
+              >
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -625,36 +637,32 @@ export default function DashboardDisplayPage() {
 
       {/* Delete confirmation dialog */}
       {deleteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteOpen(false)} />
-          <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-            <h3 className="text-lg font-semibold">确认删除</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              确定要删除看板「{dashboard.name}」吗？此操作不可撤销。
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeleteOpen(false)}>
-                取消
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={deleteDashboard.isPending}
-                onClick={() => {
-                  deleteDashboard.mutate(dashboard.id, {
-                    onSuccess: () => navigate("/dashboards"),
-                  });
-                }}
-              >
-                {deleteDashboard.isPending ? (
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="mr-1 h-4 w-4" />
-                )}
-                确定
-              </Button>
-            </div>
+        <Dialog open onClose={() => setDeleteOpen(false)} title="确认删除">
+          <p className="text-sm text-muted-foreground">
+            确定要删除看板「{dashboard.name}」吗？此操作不可撤销。
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteDashboard.isPending}
+              onClick={() => {
+                deleteDashboard.mutate(dashboard.id, {
+                  onSuccess: () => navigate("/dashboards"),
+                });
+              }}
+            >
+              {deleteDashboard.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-1 h-4 w-4" />
+              )}
+              确定
+            </Button>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );
