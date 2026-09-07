@@ -2,6 +2,16 @@
 
 How to know the implementation succeeded and can be merged. Every gate must pass.
 
+> **Validation results (2026-09-07):** all gates passed. Gates 1–4 run in CI on every push
+> (backend 212 pytest + ruff, frontend eslint + tsc + 103 vitest); MCP suite is 106 tests
+> (ruff clean). Gates 5–9 validated live: CSV endpoint exercised by MCP unit tests with
+> byte-level BOM checks; dev MCP server driven by a real MCP client; production stack
+> deployed via CI/CD and verified end-to-end through the frp tunnel — API-key 401s,
+> `export_visualizations` returning signed download URLs, browser download (HTTP 200,
+> correct PNG), tampered-token 403. Delivery evolved during the phase: file paths →
+> inline content blocks (tried, reverted after real-world testing) → signed expiring
+> download URLs (final).
+
 ---
 
 ## Gate 1 — Backend tests pass
@@ -134,14 +144,14 @@ Automated coverage (no MCP client needed): `cd ykmmgmt/mcp_server && python -m p
 
 ---
 
-## Gate 8 — MCP export_visualizations tool produces CSV and PNG files
+## Gate 8 — MCP export_visualizations tool produces CSV and PNG downloads
 
 1. Ensure the backend is running and has at least one table visualization and one non-table visualization (e.g., a bar chart)
-2. Via MCP client (over the HTTP connection), call `export_visualizations` with `output_dir` set to a temp directory
-3. Check the output directory and the tool's summary response
-4. Call the tool a second time with the same visualizations
+2. Via MCP client (over the HTTP connection), call `export_visualizations` with an optional `visualization_ids` subset
+3. Check the tool's summary response — each file carries a signed download URL
+4. Open a download URL in a plain browser (no auth headers); call the tool a second time for deterministic-output comparison
 
-**Expected:** Table visualizations produce `.csv` files; non-table visualizations produce `.png` chart images that match their configuration (correct x/y columns, labels, Chinese titles — no tofu boxes) and are byte-stable (or visually identical) across repeated runs — deterministic server-side rendering. The tool returns a compact summary with `exported` count, `failed` count, and per-file previews (file path, chart type, columns, row count) — no full datasets and no raw chart data inline. Files are readable and correctly named.
+**Expected:** Table visualizations produce `.csv` files; non-table visualizations produce `.png` chart images that match their configuration (correct x/y columns, labels, Chinese titles — no tofu boxes) and are byte-stable (or visually identical) across repeated runs — deterministic server-side rendering. The tool returns a compact summary with `exported` count, `failed` count, and per-file previews (file name, download URL, chart type, columns, row count) — no full datasets and no raw chart data inline. Downloads work without auth headers (HMAC token in the URL) and expire after `YKM_MCP_DOWNLOAD_TTL` (default 24 h).
 
 **Aggregation parity (critical):** the backend `/data` endpoint returns RAW view rows — the UI aggregates client-side before Recharts draws. The MCP renderer must replicate that pipeline, so exported PNGs must show the same aggregated shape users see in the app: categorical-x bars aggregate per category (`config.aggregation`, default SUM), date-x line/bar charts bucket by `time_granularity` and apply `time_aggregation`, `group_by_column` splits into per-category series (top-10 + 其他）， pie charts group by label (top-8 slices + 其他). A raw-row plot (one bar/slice per transaction row) is a defect.
 
@@ -149,9 +159,9 @@ Automated coverage (no MCP client needed): `cd ykmmgmt/mcp_server && python -m p
 
 ## Gate 9 — MCP server handles errors gracefully
 
-1. Call `export_visualizations` with an invalid `output_dir` (e.g., a path that doesn't exist and can't be created)
-2. Call `export_visualizations` when the backend is not running
-3. Call `export_visualizations` with invalid service account credentials
+1. Call `export_visualizations` when the backend is not running
+2. Call `export_visualizations` with invalid service account credentials
+3. Open a download URL with a tampered/expired token, or one whose file has been pruned
 
 **Expected:** All error cases return `{"error": "..."}` JSON with a human-readable message. No raw Python tracebacks are exposed to the MCP client.
 
@@ -159,18 +169,18 @@ Automated coverage (no MCP client needed): `cd ykmmgmt/mcp_server && python -m p
 
 ## Merge Checklist
 
-- [ ] All gates pass on a clean checkout
-- [ ] Backend: new `/api/visualizations/{id}/export` endpoint returns CSV for table charts, 422 for others
-- [ ] Frontend: table export button downloads CSV; non-table export still produces PNG
-- [ ] MCP server: runs as a persistent streamable-HTTP service, discovers tools, authenticates with the backend via service account; no stdio code path remains
-- [ ] MCP endpoint: enforces the API key — missing/invalid `Authorization: Bearer` rejected with 401
-- [ ] Deployment: `ykmmgmt/mcp_server/Dockerfile` builds; `mcp_server` service runs in `docker-compose.prod.yml` (GHCR image with `build:` fallback) and reaches the backend over the internal network
-- [ ] Exposure: frpc `[[proxies]]` entry tunnels the MCP port; external agents reach the endpoint through the tunnel
-- [ ] CI/CD: `deploy.yml` builds/pushes `ghcr.io/fizzking9/ykmmgmt-mcp`; `scripts/deploy.ps1` pulls it; `deploy/.env.prod.example` documents `MCP_IMAGE` and `YKM_MCP_API_KEY`
-- [ ] MCP tool: `export_visualizations` writes CSV files (tables) and server-rendered PNG chart images (other chart types) to the output directory
-- [ ] Renderer: honors `config_json` required keys per chart type, Chinese text renders correctly (no tofu, incl. in the Docker container's CJK font), figures closed after each render
-- [ ] Context-window protection: tool summary contains only file paths and previews, never full datasets — raw chart data never enters the agent's context
-- [ ] SKILL/prompt mechanism fully removed (no `SKILLS/` dir, no prompt handlers, no stale references)
-- [ ] Error handling: MCP tool errors return structured JSON, never raw tracebacks
-- [ ] No dead code: no unused imports, functions, or files introduced (incl. removed stdio path)
-- [ ] All new code follows project conventions (Chinese UI text, Ruff/ESLint clean)
+- [x] All gates pass on a clean checkout
+- [x] Backend: new `/api/visualizations/{id}/export` endpoint returns CSV for table charts, 422 for others
+- [x] Frontend: table export button downloads CSV; non-table export still produces PNG
+- [x] MCP server: runs as a persistent streamable-HTTP service, discovers tools, authenticates with the backend via service account; no stdio code path remains
+- [x] MCP endpoint: enforces the API key — missing/invalid `Authorization: Bearer` rejected with 401
+- [x] Deployment: `ykmmgmt/mcp_server/Dockerfile` builds; `mcp_server` service runs in `docker-compose.prod.yml` (GHCR image with `build:` fallback) and reaches the backend over the internal network
+- [x] Exposure: frpc `[[proxies]]` entry tunnels the MCP port; external agents reach the endpoint through the tunnel
+- [x] CI/CD: `deploy.yml` builds/pushes `ghcr.io/fizzking9/ykmmgmt-mcp`; `scripts/deploy.ps1` pulls it; `deploy/.env.prod.example` documents `MCP_IMAGE` and `YKM_MCP_API_KEY`
+- [x] MCP tool: `export_visualizations` produces CSV files (tables) and server-rendered PNG chart images (other chart types), delivered as signed expiring download URLs
+- [x] Renderer: honors `config_json` required keys per chart type, Chinese text renders correctly (no tofu, incl. in the Docker container's CJK font), figures closed after each render
+- [x] Context-window protection: tool summary contains only file names, download URLs and previews, never full datasets — raw chart data never enters the agent's context
+- [x] SKILL/prompt mechanism fully removed (no `SKILLS/` dir, no prompt handlers, no stale references)
+- [x] Error handling: MCP tool errors return structured JSON, never raw tracebacks
+- [x] No dead code: no unused imports, functions, or files introduced (incl. removed stdio path)
+- [x] All new code follows project conventions (Chinese UI text, Ruff/ESLint clean)

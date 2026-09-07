@@ -371,22 +371,22 @@ High-level implementation order in small, shippable phases. Each phase produces 
 ### Initial Tool: Export Visualizations (Server-Rendered)
 
 - [x] Tool name: `export_visualizations`
-- [x] Input: `output_dir` (string, path to local folder), optional `visualization_ids` (list of UUIDs to export a subset; omit for all)
+- [x] Input: optional `visualization_ids` (list of UUIDs to export a subset; omit for all)
 - [x] Behavior (server-side rendering — deterministic chart images produced by the MCP server):
   - Fetch all saved visualizations from `GET /api/visualizations`
   - **Table charts** → download CSV from `GET /api/visualizations/{id}/export`
   - **All other chart types** (bar, line, pie, scatter, histogram, boxplot, kpi_card) → fetch data from `GET /api/visualizations/{id}/data`, render a chart image with the MCP server's matplotlib renderer, write `{sanitized_name}.png` — no raw data files, nothing for the agent to misinterpret
-  - File naming: `{sanitized_visualization_name}.{csv|png}` in the output directory
-  - Return a compact summary: `{exported: N, failed: M, files: [...]}` with per-file preview (chart type, columns, row count) — never full datasets inline, to protect the agent's context window
+  - File naming: `{sanitized_visualization_name}.{csv|png}` in a per-call batch directory inside the server's file store
+  - Return a compact summary: `{exported: N, failed: M, files: [...]}` with per-file preview (chart type, columns, row count) plus a **signed, expiring download URL** per file — never full datasets inline, to protect the agent's context window
 - [x] matplotlib renderer module in the MCP server: per-chart-type interpretation of `config_json` (x_column/y_columns, label_column/value_column, bins, category_column…), Chinese font handling (Microsoft YaHei/SimHei fallbacks), style conventions (Chinese titles/axis labels, sorted time axes, descending pie sectors)
 
-> **Decision history:** the spec initially chose agent-side rendering (raw JSON + rendering SKILL). Manual testing with a third-party agent showed non-deterministic output, misinterpreted chart variables, and a fresh .py script per run — reverted to deterministic server-side rendering (the original Phase 14 design).
+> **Decision history:** the spec initially chose agent-side rendering (raw JSON + rendering SKILL). Manual testing with a third-party agent showed non-deterministic output, misinterpreted chart variables, and a fresh .py script per run — reverted to deterministic server-side rendering (the original Phase 14 design). Delivery was then reworked twice: file paths (unreachable for remote agents) → inline base64 content blocks (tried, reverted after real-world testing) → signed expiring download URLs served at `/mcp/files/…` (final; HMAC-token authenticated, 24 h TTL, no extra auth headers needed).
 
 ### Testing
 
 - [x] Unit tests for the tool registry and each tool handler
 - [x] Integration test: over streamable HTTP, the MCP server lists tools, enforces the API key (rejects missing/invalid keys with 401), calls `export_visualizations`, and produces files in a temp directory
-- [ ] Test with an MCP client (Inspector / Claude Desktop HTTP transport) connecting to `http://localhost:8001/mcp` with the API key to verify end-to-end connectivity, including through the frpc tunnel
+- [x] Test with an MCP client (Inspector / Claude Desktop HTTP transport) connecting to `http://localhost:8001/mcp` with the API key to verify end-to-end connectivity, including through the frpc tunnel
 
 ---
 
