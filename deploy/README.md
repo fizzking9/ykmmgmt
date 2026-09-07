@@ -167,12 +167,13 @@ Log in, upload a small CSV, and confirm it appears in the Data Browser.
 3. Point an MCP client (Claude Desktop / Inspector, streamable HTTP
    transport) at `http://<CLOUD_SERVER_IP>/mcp` with header
    `Authorization: Bearer <YKM_MCP_API_KEY>` and call `export_visualizations`.
-   - Exported plots (PNG) and tables (CSV text) are returned **inline in
-     the tool result** — the agent shows them to the user directly; no
-     file access needed.
-   - Optionally pass `output_dir` (a server-container path, e.g.
-     `/exports`, bind-mounted to `./mcp_exports` on the host) to also
-     write the files to disk.
+   - The result is a compact summary with a **signed download URL per
+     file** — hand the URLs to the user; they open in any browser, no
+     extra headers needed. Links expire after `YKM_MCP_DOWNLOAD_TTL`
+     seconds (default 24 h) and files are pruned afterwards.
+   - Set `YKM_MCP_PUBLIC_URL` (e.g. `http://<CLOUD_SERVER_IP>/mcp`) so
+     links are absolute; files wait in `YKM_MCP_FILES_DIR`
+     (`/exports`, bind-mounted to `./mcp_exports` on the host).
 
 Without the API key every request to `/mcp` gets a 401.
 

@@ -79,10 +79,6 @@ async def _call_tool(
         except Exception as e:
             # Never leak raw tracebacks to the MCP client
             result = {"error": f"{type(e).__name__}: {e}"}
-    if isinstance(result, list):
-        # A list means ready-made content blocks (summary + inline
-        # images/CSV from export_visualizations) — pass through as-is.
-        return types.CallToolResult(content=result, is_error=False)
     return _json_result(result)
 
 

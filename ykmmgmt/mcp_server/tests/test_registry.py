@@ -40,8 +40,8 @@ def test_discovered_tool_shape_is_valid():
     spec = specs["export_visualizations"]
     assert spec.description
     assert spec.input_schema["type"] == "object"
-    assert "output_dir" in spec.input_schema["properties"]
-    assert spec.input_schema.get("required") is None  # output_dir is optional
+    assert "visualization_ids" in spec.input_schema["properties"]
+    assert spec.input_schema.get("required") is None
     assert callable(spec.handler)
 
 
