@@ -101,16 +101,20 @@ Write-Step "[3/5] Wait for GitHub Actions (timeout: $TimeoutMinutes min)"
 function Wait-WorkflowRun {
     param([string]$WorkflowFile, [string]$Label)
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    # Optional auth: set GITHUB_TOKEN (env var) to raise the API limit from
+    # 60 requests/hour (unauthenticated, shared per IP) to 5,000/hour.
+    $headers = @{ "User-Agent" = "ykmmgmt-release-script" }
+    if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $($env:GITHUB_TOKEN)" }
     while ((Get-Date) -lt $deadline) {
         try {
             $runs = Invoke-RestMethod `
                 -Uri "https://api.github.com/repos/$RepoSlug/actions/runs?branch=main&per_page=20" `
-                -Headers @{ "User-Agent" = "ykmmgmt-release-script" } `
+                -Headers $headers `
                 -TimeoutSec 30
         }
         catch {
-            Write-Info "GitHub API unreachable ($($_.Exception.Message)) - retrying in 30s"
-            Start-Sleep -Seconds 30
+            Write-Info "GitHub API unreachable ($($_.Exception.Message)) - retrying in 60s"
+            Start-Sleep -Seconds 60
             continue
         }
         $run = $runs.workflow_runs |
@@ -129,7 +133,10 @@ function Wait-WorkflowRun {
         else {
             Write-Info "waiting for $Label to start..."
         }
-        Start-Sleep -Seconds 20
+        # 30s cadence: an unauthenticated IP shares a 60 requests/hour budget,
+        # so polling must stay well under ~2 requests/minute to survive a
+        # full timeout window.
+        Start-Sleep -Seconds 30
     }
     Write-Error "$Label did not finish within $TimeoutMinutes minutes - check https://github.com/$RepoSlug/actions"
 }
