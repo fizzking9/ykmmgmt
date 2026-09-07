@@ -42,9 +42,7 @@ export default function UploadPage() {
         ))}
       </div>
 
-      {activeTab === "file" && (
-        <FileUploadPanel onViewHistory={() => setActiveTab("history")} />
-      )}
+      {activeTab === "file" && <FileUploadPanel onViewHistory={() => setActiveTab("history")} />}
       {activeTab === "scrape" && <ScrapeComingSoon />}
       {activeTab === "history" && <ImportHistoryPanel />}
     </div>

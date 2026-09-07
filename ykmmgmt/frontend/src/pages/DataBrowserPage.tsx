@@ -478,8 +478,7 @@ export default function DataBrowserPage() {
                             ? classifyColumnType(filterColInfo)
                             : "text";
                           const operators = getOperators(colType);
-                          const opLabel =
-                            operators.find((o) => o.value === f.op)?.label || f.op;
+                          const opLabel = operators.find((o) => o.value === f.op)?.label || f.op;
                           const isNullOp = f.op === "is_null" || f.op === "is_not_null";
                           return (
                             <div key={i} className="flex items-end gap-3">
@@ -505,9 +504,7 @@ export default function DataBrowserPage() {
                                     }}
                                   >
                                     <SelectTrigger>
-                                      <SelectValue>
-                                        {filterColInfo?.label ?? "选择列"}
-                                      </SelectValue>
+                                      <SelectValue>{filterColInfo?.label ?? "选择列"}</SelectValue>
                                     </SelectTrigger>
                                     <SelectContent
                                       align="start"
@@ -567,9 +564,7 @@ export default function DataBrowserPage() {
                                           updateColumnFilter(i, {
                                             op: v as FilterOperator,
                                             value:
-                                              v === "is_null" || v === "is_not_null"
-                                                ? ""
-                                                : f.value,
+                                              v === "is_null" || v === "is_not_null" ? "" : f.value,
                                           });
                                         }
                                       }}
@@ -610,6 +605,7 @@ export default function DataBrowserPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label="移除列筛选"
                                 className="shrink-0"
                                 onClick={() => removeColumnFilter(i)}
                               >
@@ -757,7 +753,7 @@ export default function DataBrowserPage() {
                     {/* Skeleton overlay for page transitions */}
                     {isPlaceholderData && (
                       <div className="mt-1 text-center text-xs text-muted-foreground">
-                        正在加载...
+                        正在加载…
                       </div>
                     )}
                   </CardContent>

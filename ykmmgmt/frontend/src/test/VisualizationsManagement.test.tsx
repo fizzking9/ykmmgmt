@@ -237,10 +237,9 @@ describe("VisualizationsListPage", () => {
     fireEvent.click(within(rows[1]).getByText("导出"));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/visualizations/viz-table/export",
-        { credentials: "include" },
-      );
+      expect(fetchMock).toHaveBeenCalledWith("/api/visualizations/viz-table/export", {
+        credentials: "include",
+      });
     });
     // The fetched blob is turned into a browser download
     expect(createObjectUrlMock).toHaveBeenCalledTimes(1);

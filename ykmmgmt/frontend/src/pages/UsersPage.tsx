@@ -21,7 +21,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth, ROLE_LABELS, type Role } from "@/contexts/AuthContext";
-import { useCreateUser, useUpdateUser, useUpdateUserStatus, useUsers, type UserItem } from "@/hooks/useUsers";
+import {
+  useCreateUser,
+  useUpdateUser,
+  useUpdateUserStatus,
+  useUsers,
+  type UserItem,
+} from "@/hooks/useUsers";
 
 type InputRole = "admin" | "user";
 
@@ -68,7 +74,9 @@ export default function UsersPage() {
   // direct URL access — server-side 403 remains the authoritative check
   if (!me || !isAdmin) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">无权访问此页面</div>
+      <div className="flex h-64 items-center justify-center text-muted-foreground">
+        无权访问此页面
+      </div>
     );
   }
 
@@ -119,10 +127,7 @@ export default function UsersPage() {
           <h1 className="text-2xl font-semibold tracking-tight">用户管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">管理系统账号与角色权限</p>
         </div>
-        <Button
-          onClick={() => setCreateOpen(true)}
-          data-testid="create-user-button"
-        >
+        <Button onClick={() => setCreateOpen(true)} data-testid="create-user-button">
           <UserPlus className="mr-2 h-4 w-4" />
           新建用户
         </Button>
@@ -156,14 +161,18 @@ export default function UsersPage() {
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">
                       {u.username}
-                      {isSelf && <span className="ml-2 text-xs text-muted-foreground">（当前账号）</span>}
+                      {isSelf && (
+                        <span className="ml-2 text-xs text-muted-foreground">（当前账号）</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <RoleBadge role={u.role} />
                     </TableCell>
                     <TableCell>
                       {u.is_active ? (
-                        <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">启用</Badge>
+                        <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                          启用
+                        </Badge>
                       ) : (
                         <Badge variant="destructive">停用</Badge>
                       )}
@@ -266,7 +275,9 @@ export default function UsersPage() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={createUser.isPending || newUsername.trim().length < 3 || newPassword.length < 8}
+              disabled={
+                createUser.isPending || newUsername.trim().length < 3 || newPassword.length < 8
+              }
             >
               {createUser.isPending ? "创建中…" : "创建"}
             </Button>
@@ -275,7 +286,11 @@ export default function UsersPage() {
       </Dialog>
 
       {/* 重置密码 */}
-      <Dialog open={!!resetTarget} onClose={() => setResetTarget(null)} title={`重置密码 — ${resetTarget?.username ?? ""}`}>
+      <Dialog
+        open={!!resetTarget}
+        onClose={() => setResetTarget(null)}
+        title={`重置密码 — ${resetTarget?.username ?? ""}`}
+      >
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="reset-password">新密码</Label>
@@ -291,7 +306,10 @@ export default function UsersPage() {
             <Button variant="outline" onClick={() => setResetTarget(null)}>
               取消
             </Button>
-            <Button onClick={handleResetPassword} disabled={updateUser.isPending || resetPassword.length < 8}>
+            <Button
+              onClick={handleResetPassword}
+              disabled={updateUser.isPending || resetPassword.length < 8}
+            >
               {updateUser.isPending ? "提交中…" : "确认重置"}
             </Button>
           </div>
@@ -299,7 +317,11 @@ export default function UsersPage() {
       </Dialog>
 
       {/* 修改角色（仅 root） */}
-      <Dialog open={!!roleTarget} onClose={() => setRoleTarget(null)} title={`修改角色 — ${roleTarget?.username ?? ""}`}>
+      <Dialog
+        open={!!roleTarget}
+        onClose={() => setRoleTarget(null)}
+        title={`修改角色 — ${roleTarget?.username ?? ""}`}
+      >
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>新角色</Label>
@@ -320,7 +342,10 @@ export default function UsersPage() {
             <Button variant="outline" onClick={() => setRoleTarget(null)}>
               取消
             </Button>
-            <Button onClick={handleChangeRole} disabled={updateUser.isPending || !!roleTarget && roleTarget.role === roleValue}>
+            <Button
+              onClick={handleChangeRole}
+              disabled={updateUser.isPending || (!!roleTarget && roleTarget.role === roleValue)}
+            >
               {updateUser.isPending ? "提交中…" : "确认修改"}
             </Button>
           </div>

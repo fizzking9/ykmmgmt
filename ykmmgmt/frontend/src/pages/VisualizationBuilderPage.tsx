@@ -20,6 +20,7 @@ import { useDashboardBuilderContext } from "@/contexts/DashboardBuilderContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -1070,100 +1071,102 @@ export default function VisualizationBuilderPage() {
                 </CardTitle>
               </CardHeader>
               {!isTimeSeriesChart && (
-              <CardContent className="space-y-3">
-                    <p className="text-xs text-muted-foreground">
-                      设置时间列后，仪表盘的全局时间筛选（日期范围 / 粒度 / 聚合）才会作用于本可视化。
-                    </p>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">时间列</label>
-                  <Select
-                    value={(state.configJson.date_column as string) || "__none__"}
-                    onValueChange={(v) =>
-                      vizBuilder.updateConfigKey("date_column", v === "__none__" ? "" : v)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue>
-                        {(state.configJson.date_column as string) || "未设置"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent
-                      align="start"
-                      sideOffset={4}
-                      alignItemWithTrigger={false}
-                      className="bg-background"
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    设置时间列后，仪表盘的全局时间筛选（日期范围 / 粒度 / 聚合）才会作用于本可视化。
+                  </p>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">时间列</label>
+                    <Select
+                      value={(state.configJson.date_column as string) || "__none__"}
+                      onValueChange={(v) =>
+                        vizBuilder.updateConfigKey("date_column", v === "__none__" ? "" : v)
+                      }
                     >
-                      <SelectItem value="__none__">未设置</SelectItem>
-                      {dateColumns.map((col) => (
-                        <SelectItem key={col} value={col}>
-                          {col}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {(state.configJson.date_column as string) && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">默认粒度</label>
-                      <Select
-                        value={(state.configJson.default_granularity as string) || "day"}
-                        onValueChange={(v) => vizBuilder.updateConfigKey("default_granularity", v)}
+                      <SelectTrigger>
+                        <SelectValue>
+                          {(state.configJson.date_column as string) || "未设置"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent
+                        align="start"
+                        sideOffset={4}
+                        alignItemWithTrigger={false}
+                        className="bg-background"
                       >
-                        <SelectTrigger>
-                          <SelectValue>
-                            {TIME_PROFILE_GRANULARITY_OPTIONS.find(
-                              (o) =>
-                                o.value ===
-                                ((state.configJson.default_granularity as string) || "day"),
-                            )?.label ?? "日"}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent
-                          align="start"
-                          sideOffset={4}
-                          alignItemWithTrigger={false}
-                          className="bg-background"
-                        >
-                          {TIME_PROFILE_GRANULARITY_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">默认聚合</label>
-                      <Select
-                        value={(state.configJson.default_agg as string) || "SUM"}
-                        onValueChange={(v) => vizBuilder.updateConfigKey("default_agg", v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue>
-                            {AGGREGATION_OPTIONS.find(
-                              (o) =>
-                                o.value === ((state.configJson.default_agg as string) || "SUM"),
-                            )?.label ?? "求和"}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent
-                          align="start"
-                          sideOffset={4}
-                          alignItemWithTrigger={false}
-                          className="bg-background"
-                        >
-                          {AGGREGATION_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        <SelectItem value="__none__">未设置</SelectItem>
+                        {dateColumns.map((col) => (
+                          <SelectItem key={col} value={col}>
+                            {col}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
-              </CardContent>
+                  {(state.configJson.date_column as string) && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium">默认粒度</label>
+                        <Select
+                          value={(state.configJson.default_granularity as string) || "day"}
+                          onValueChange={(v) =>
+                            vizBuilder.updateConfigKey("default_granularity", v)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue>
+                              {TIME_PROFILE_GRANULARITY_OPTIONS.find(
+                                (o) =>
+                                  o.value ===
+                                  ((state.configJson.default_granularity as string) || "day"),
+                              )?.label ?? "日"}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent
+                            align="start"
+                            sideOffset={4}
+                            alignItemWithTrigger={false}
+                            className="bg-background"
+                          >
+                            {TIME_PROFILE_GRANULARITY_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium">默认聚合</label>
+                        <Select
+                          value={(state.configJson.default_agg as string) || "SUM"}
+                          onValueChange={(v) => vizBuilder.updateConfigKey("default_agg", v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue>
+                              {AGGREGATION_OPTIONS.find(
+                                (o) =>
+                                  o.value === ((state.configJson.default_agg as string) || "SUM"),
+                              )?.label ?? "求和"}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent
+                            align="start"
+                            sideOffset={4}
+                            alignItemWithTrigger={false}
+                            className="bg-background"
+                          >
+                            {AGGREGATION_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
               )}
             </Card>
           )}
@@ -1194,6 +1197,7 @@ export default function VisualizationBuilderPage() {
                 size="sm"
                 onClick={() => setZoomOpen(true)}
                 disabled={!state.viewId}
+                aria-label="放大预览"
                 title="放大查看"
               >
                 <Maximize2 className="h-4 w-4" />
@@ -1213,6 +1217,9 @@ export default function VisualizationBuilderPage() {
       {/* Zoom-in popup */}
       {zoomOpen && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="可视化预览"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setZoomOpen(false)}
         >
@@ -1222,7 +1229,13 @@ export default function VisualizationBuilderPage() {
           >
             <div className="flex items-center justify-between border-b px-4 py-3">
               <h3 className="text-base font-semibold">{state.name || "可视化预览"}</h3>
-              <Button variant="ghost" size="sm" onClick={() => setZoomOpen(false)} title="关闭">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setZoomOpen(false)}
+                aria-label="关闭预览"
+                title="关闭"
+              >
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -1233,28 +1246,24 @@ export default function VisualizationBuilderPage() {
 
       {/* Name-conflict Confirmation Dialog */}
       {confirmDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setConfirmDialog(null)} />
-          <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-            <h3 className="text-lg font-semibold">确认修改</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              可视化名称「{confirmDialog.targetName}」已存在，是否修改该可视化？
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setConfirmDialog(null)} disabled={isSaving}>
-                取消
-              </Button>
-              <Button onClick={handleConfirmUpdate} disabled={isSaving}>
-                {isSaving ? (
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-1 h-4 w-4" />
-                )}
-                修改
-              </Button>
-            </div>
+        <Dialog open onClose={() => setConfirmDialog(null)} title="确认修改">
+          <p className="text-sm text-muted-foreground">
+            可视化名称「{confirmDialog.targetName}」已存在，是否修改该可视化？
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmDialog(null)} disabled={isSaving}>
+              取消
+            </Button>
+            <Button onClick={handleConfirmUpdate} disabled={isSaving}>
+              {isSaving ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-1 h-4 w-4" />
+              )}
+              修改
+            </Button>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );
@@ -2312,10 +2321,15 @@ function processTimeSeriesRows(
       });
     }
     if (rangeEnd) {
-      // Add one day to include the end date
+      // Add one day to include the end date. Format in LOCAL time so a
+      // UTC+8 user selecting 2026-09-01 doesn't silently roll back to
+      // 2026-08-31 the way `.toISOString().slice(0,10)` would.
       const end = new Date(rangeEnd);
       end.setDate(end.getDate() + 1);
-      const endStr = end.toISOString().slice(0, 10);
+      const y = end.getFullYear();
+      const m = String(end.getMonth() + 1).padStart(2, "0");
+      const d = String(end.getDate()).padStart(2, "0");
+      const endStr = `${y}-${m}-${d}`;
       filtered = filtered.filter((r) => {
         const v = String(r[xColumn] ?? "");
         return v < endStr;
@@ -2740,7 +2754,7 @@ export function KpiCardPreview({
       style={height ? { height } : { minHeight: 200 }}
     >
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-bold leading-tight tracking-tight text-[clamp(1.5rem,11cqw,3.5rem)]">
+      <p className="font-bold leading-tight tracking-tight tabular-nums text-[clamp(1.5rem,11cqw,3.5rem)]">
         {formattedValue}
       </p>
       {currentPeriodLabel && (

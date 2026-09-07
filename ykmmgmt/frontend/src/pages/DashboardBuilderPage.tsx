@@ -5,6 +5,7 @@ import "react-grid-layout/css/styles.css";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -754,7 +755,12 @@ export default function DashboardBuilderPage() {
 
       {/* Expanded full-screen canvas — WYSIWYG rearranging */}
       {canvasExpanded && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="画布预览"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        >
           {/* Centered bounded panel — the visible frame marks the valid canvas area */}
           <div className="flex h-[92vh] w-[min(1500px,96vw)] flex-col rounded-lg border bg-background shadow-xl">
             <div className="flex items-center justify-between border-b px-4 py-2">
@@ -799,11 +805,22 @@ export default function DashboardBuilderPage() {
 
       {/* Tile preview dialog */}
       {previewTile && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${tileTypeLabel(previewTile)} 预览`}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+        >
           <div className="flex h-[80vh] w-[90vw] max-w-5xl flex-col rounded-lg bg-background shadow-xl">
             <div className="flex items-center justify-between border-b px-4 py-3">
               <h3 className="text-base font-semibold">{tileTypeLabel(previewTile)}</h3>
-              <Button variant="ghost" size="sm" onClick={() => setPreviewTile(null)} title="关闭">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPreviewTile(null)}
+                aria-label="关闭预览"
+                title="关闭"
+              >
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -814,55 +831,45 @@ export default function DashboardBuilderPage() {
 
       {/* Overwrite confirmation dialog (name exists → update that dashboard) */}
       {overwriteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setOverwriteTarget(null)} />
-          <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-            <h3 className="text-lg font-semibold">名称已存在</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              看板名称「{overwriteTarget.name}」已存在，是否修改该看板？
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setOverwriteTarget(null)}>
-                取消
-              </Button>
-              <Button
-                onClick={async () => {
-                  const target = overwriteTarget;
-                  setOverwriteTarget(null);
-                  await persist(target.name, target.id);
-                }}
-              >
-                确定修改
-              </Button>
-            </div>
+        <Dialog open onClose={() => setOverwriteTarget(null)} title="名称已存在">
+          <p className="text-sm text-muted-foreground">
+            看板名称「{overwriteTarget.name}」已存在，是否修改该看板？
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOverwriteTarget(null)}>
+              取消
+            </Button>
+            <Button
+              onClick={async () => {
+                const target = overwriteTarget;
+                setOverwriteTarget(null);
+                await persist(target.name, target.id);
+              }}
+            >
+              确定修改
+            </Button>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Rename dialog (server 409 → prompt for a new name and retry) */}
       {renameOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setRenameOpen(false)} />
-          <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-            <h3 className="text-lg font-semibold">名称冲突</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              看板名称已存在，请输入新的名称后重试。
-            </p>
-            <input
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              placeholder="输入新的看板名称"
-              className="mt-3 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-            />
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRenameOpen(false)}>
-                取消
-              </Button>
-              <Button onClick={handleRenameRetry}>保存</Button>
-            </div>
+        <Dialog open onClose={() => setRenameOpen(false)} title="名称冲突">
+          <p className="text-sm text-muted-foreground">看板名称已存在，请输入新的名称后重试。</p>
+          <input
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            placeholder="输入新的看板名称"
+            className="mt-3 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRenameOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleRenameRetry}>保存</Button>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

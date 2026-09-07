@@ -390,11 +390,62 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 15 — Platform Data Scraping (Future, Post-Deployment)
+## Phase 15 — Frontend Upgrade (Design System & UX)
+
+**Goal:** Repair the broken design system and close the accessibility, consistency, and performance gaps found in the 2026-09-07 design audit, so the UI renders as its components intend and meets baseline WCAG.
+
+> **Origin:** A full design audit (redesign-existing-projects + Vercel Web Interface Guidelines) found that the shadcn/ui v4 components run on Tailwind 3.4.19 with a v3 config missing most tokens — so destructive/error colors, focus rings, card padding, badge radius, and select truncation silently don't render. This phase fixes that root cause first, then the downstream gaps.
+
+> **Decisions (2026-09-07):** Stay on Tailwind v3 and patch the config (no v4 migration) · implement dark mode (`.dark` tokens + ThemeProvider) · keep the `/` home route blank for now (real home page is a later phase) · code-split the two giant builders · keep the neutral grayscale (no new accent color) · Geist for Latin/numbers + system CJK fallback (no bundled CJK webfont).
+
+### P0 — Restore the design system (root cause)
+
+- [x] `tailwind.config.js` — add the missing color tokens already defined in `index.css` but unmapped: `destructive(+foreground)`, `secondary(+foreground)`, `input`, `ring`, `chart-1..5`, and the `sidebar-*` set; add `fontFamily.sans`/`heading`; define `--radius-md` (or drop its references)
+- [x] Translate v4-only syntax → v3 in the five primitives: `card.tsx` (`px-(--card-spacing)` → `px-[var(--card-spacing)]`, drop `has-data-[slot=…]`), `button.tsx` (`ring-3`→`ring-2`, `transition-all`→`transition-colors`), `badge.tsx` (`rounded-4xl`→`rounded-full`, `size-3!`→`!size-3`), `select.tsx` (`*:data-[slot=…]`→`[&_[data-slot=…]]:`), `sheet.tsx` (`data-starting-style`/`data-ending-style` → installed `tailwindcss-animate` `data-[state=open]:animate-in`)
+- [x] Wire the font: `import "@fontsource-variable/geist"` in `main.tsx` + `font-sans` stack with system CJK fallback (`"PingFang SC"`, `"Microsoft YaHei"`, `"Noto Sans SC"`), replacing the system-font stack in `index.css`
+- [x] Fix the Button focus ring (only hard WCAG 2.4.7 failure): `outline-none` + invalid `ring-3` → visible `focus-visible` indicator
+
+### P1 — Correctness & accessibility
+
+- [x] Login error message renders in `text-destructive` (currently unstyled, indistinguishable from body text)
+- [x] Dialog: add focus trap + focus restore on close + `aria-labelledby` linking the title; consolidate the ~10 hand-rolled modal backdrops across pages into the shared `Dialog`
+- [x] Add `aria-label` to all icon-only buttons (mobile menu trigger, back/close, ViewBuilder/VisualizationBuilder/DataBrowser icon buttons)
+- [x] `sr-only` text "Close" → "关闭" in `sheet.tsx`
+- [x] `min-h-screen` → `min-h-dvh` on full-height layouts (AppLayout, LoginPage, NotFoundPage, ErrorBoundary)
+- [x] Replace `...` with `…` in user-facing copy (ViewBuilder placeholders, loading text)
+- [x] Fix the `toISOString().slice(0,10)` UTC off-by-one in VisualizationBuilder date filter (use local date, not UTC)
+- [x] Add skip-to-content link + `<main id="main">`; add `<meta name="theme-color">` and a branded favicon (replace default `/vite.svg`)
+
+### P2 — Feel & polish
+
+- [x] `tabular-nums` on all numeric surfaces (KPI tiles, data grids, Recharts axes/tooltips)
+- [x] Honor `prefers-reduced-motion` for animations
+- [x] `touch-action: manipulation` on interactive elements; `overscroll-behavior: contain` on modals/sheet
+- [x] Empty states get an icon + a call-to-action button (currently bare "请先创建…" text)
+- [x] Unify loading indicators: replace `Loader2` spinners with layout-matching skeletons where feasible
+
+### P3 — Structure & performance
+
+- [x] Route-level `React.lazy` for `VisualizationBuilderPage` (143 KB) and `ViewBuilderPage` (101 KB) so they leave the initial bundle; add a route-level `Suspense` fallback
+- [x] Implement dark mode: `.dark` token block in `index.css` + `ThemeProvider` (next-themes already installed; `sonner` already calls `useTheme`) + a theme toggle; validate the existing `dark:` variants in button/badge/select/UsersPage
+- [x] Add `color-scheme` and dark-mode scrollbar/input fixes
+
+### Validation
+
+- [x] Rebuild and confirm the previously-missing utilities now exist in the production CSS: `.text-destructive`, `.ring-ring`, `.border-input`, `.bg-secondary`, `.font-heading`, `.rounded-full` badges, `.tabular-nums`, card `px-[var(--card-spacing)]`
+- [x] Visual check: destructive actions are red, badges are pills, cards have padding, buttons show a focus ring, selects truncate long labels
+- [x] Keyboard-only pass: every interactive element reachable with a visible focus indicator; dialogs trap and restore focus
+- [x] Initial bundle no longer contains the two builder pages (verify via build output / sourcemap)
+- [x] Dark mode toggles cleanly with no unreadable surfaces
+- [x] All 12 frontend vitest suites pass; `tsc` and ESLint clean
+
+---
+
+## Phase 16 — Platform Data Scraping (Future, Post-Deployment)
 
 **Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
 
-> ⚠️ **Deferred:** This phase is a future feature, planned AFTER deployment (Phase 13). The 数据抓取 tab in the 数据导入 page (Phase 4 extended scope) already ships as a "coming soon" placeholder and will become the entry point for this feature.
+> ⚠️ **Deferred:** This phase is a future feature, planned AFTER deployment (Phase 13) and the Phase 15 frontend upgrade. The 数据抓取 tab in the 数据导入 page (Phase 4 extended scope) already ships as a "coming soon" placeholder and will become the entry point for this feature. (Renumbered from Phase 15 → Phase 16 on 2026-09-07 to make room for the Frontend Upgrade.)
 
 > ⚠️ **Dependency:** Details about the platform (API endpoints, page structure, auth) will be provided when we reach this phase.
 

@@ -58,7 +58,7 @@ export function KpiTileBody({ config }: { config: KpiTileConfig }) {
       className="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center [container-type:inline-size]"
     >
       <p className="text-xs text-muted-foreground">{config.label}</p>
-      <p className="font-bold leading-tight tracking-tight text-[clamp(1.5rem,13cqw,3.25rem)]">
+      <p className="font-bold leading-tight tracking-tight tabular-nums text-[clamp(1.5rem,13cqw,3.25rem)]">
         {value === null ? "—" : formatKpiValue(value)}
       </p>
       <p className="text-[11px] text-muted-foreground">

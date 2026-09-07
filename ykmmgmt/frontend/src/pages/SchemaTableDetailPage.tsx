@@ -142,7 +142,9 @@ export default function SchemaTableDetailPage() {
         </CardHeader>
         <CardContent>
           {detail.sample_rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无数据，可通过“数据导入”页面上传文件。</p>
+            <p className="text-sm text-muted-foreground">
+              暂无数据，可通过“数据导入”页面上传文件。
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <Table>

@@ -62,7 +62,12 @@ export default function VisualizationViewPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/visualizations")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="返回可视化列表"
+            onClick={() => navigate("/visualizations")}
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h2 className="text-2xl font-bold tracking-tight">{viz.name}</h2>

@@ -3,6 +3,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { cn } from "@/lib/utils";
 import { useDashboards } from "@/hooks/useDashboards";
 import { useAuth, ROLE_LABELS } from "@/contexts/AuthContext";
+import { ThemeToggle } from "./ThemeToggle";
 import {
   Upload,
   ChevronDown,
@@ -34,7 +35,12 @@ const groups: NavGroup[] = [
       { to: "/upload", label: "数据导入", icon: <Upload className="h-4 w-4" />, adminOnly: true },
       { to: "/data-browser", label: "数据浏览", icon: <Database className="h-4 w-4" /> },
       { to: "/schema", label: "数据表管理", icon: <Table2 className="h-4 w-4" />, adminOnly: true },
-      { to: "/schema/create", label: "新建数据表", icon: <Plus className="h-4 w-4" />, adminOnly: true },
+      {
+        to: "/schema/create",
+        label: "新建数据表",
+        icon: <Plus className="h-4 w-4" />,
+        adminOnly: true,
+      },
     ],
   },
   {
@@ -43,7 +49,12 @@ const groups: NavGroup[] = [
     links: [
       { to: "/views", label: "数据视图", icon: <LayoutGrid className="h-4 w-4" /> },
       { to: "/visualizations", label: "可视化", icon: <BarChart3 className="h-4 w-4" /> },
-      { to: "/views/builder", label: "视图创建", icon: <Eye className="h-4 w-4" />, adminOnly: true },
+      {
+        to: "/views/builder",
+        label: "视图创建",
+        icon: <Eye className="h-4 w-4" />,
+        adminOnly: true,
+      },
       {
         to: "/visualizations/builder",
         label: "可视化构建",
@@ -290,7 +301,8 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
       {/* Current user + logout — pinned to the bottom. The avatar/name
           block doubles as a shortcut to the profile page. */}
       {user && (
-        <div className="mt-auto border-t pt-3">
+        <div className="mt-auto space-y-2 border-t pt-3">
+          <ThemeToggle />
           <button
             type="button"
             title="个人设置"
@@ -298,7 +310,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
               onNavClick?.();
               navigate("/profile");
             }}
-            className="mb-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+            className="touch-manipulation flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
               {user.username.charAt(0).toUpperCase()}
@@ -311,7 +323,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="touch-manipulation flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <LogOut className="h-4 w-4" />
             退出登录

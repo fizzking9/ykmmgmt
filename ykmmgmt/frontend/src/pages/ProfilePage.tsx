@@ -133,7 +133,10 @@ export default function ProfilePage() {
               />
             </div>
             <div className="flex justify-end">
-              <Button onClick={handleChangeUsername} disabled={updateProfile.isPending || !usernameChanged}>
+              <Button
+                onClick={handleChangeUsername}
+                disabled={updateProfile.isPending || !usernameChanged}
+              >
                 {updateProfile.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
                 保存用户名
               </Button>

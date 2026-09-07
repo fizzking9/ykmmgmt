@@ -139,7 +139,7 @@ function ColumnCombobox({
   value,
   options,
   onChange,
-  placeholder = "搜索列...",
+  placeholder = "搜索列…",
 }: {
   value: string;
   options: ColumnOption[];
@@ -194,7 +194,7 @@ function ColumnCombobox({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索..."
+              placeholder="搜索…"
               className="flex-1 bg-transparent py-1.5 text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
@@ -575,8 +575,7 @@ export default function ViewBuilderPage() {
       if (j.right_alias) available.add(j.right_alias);
     }
     // "table.column" reference whose table is no longer available
-    const orphanedRef = (ref: string) =>
-      ref.includes(".") && !available.has(ref.split(".", 1)[0]);
+    const orphanedRef = (ref: string) => ref.includes(".") && !available.has(ref.split(".", 1)[0]);
 
     // Drop computed columns whose operands referenced the removed table
     const ccOrphaned = (cc: ComputedColumnItem) =>
@@ -875,7 +874,7 @@ export default function ViewBuilderPage() {
     return (
       <div className="p-8 text-center">
         <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="mt-4 text-muted-foreground">加载视图配置...</p>
+        <p className="mt-4 text-muted-foreground">加载视图配置…</p>
       </div>
     );
   }
@@ -982,6 +981,7 @@ export default function ViewBuilderPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="移除关联"
                         className="absolute right-1 top-1 h-6 w-6"
                         onClick={() => handleRemoveJoin(i)}
                       >
@@ -1293,6 +1293,7 @@ export default function ViewBuilderPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label="编辑计算列"
                       className="h-7 w-7 shrink-0"
                       title="编辑"
                       onClick={() => handleStartEditCC(i)}
@@ -1302,6 +1303,7 @@ export default function ViewBuilderPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label="删除计算列"
                       className="h-7 w-7 shrink-0 text-destructive"
                       title="删除"
                       onClick={() => handleRemoveComputedColumn(i)}
@@ -1447,7 +1449,7 @@ export default function ViewBuilderPage() {
                                       };
                                       handleUpdateDraftCC({ operands: newOperands });
                                     }}
-                                    placeholder="选择数值列..."
+                                    placeholder="选择数值列…"
                                   />
                                 ) : (
                                   <input
@@ -1568,7 +1570,7 @@ export default function ViewBuilderPage() {
                                 base_column: column,
                               });
                             }}
-                            placeholder="选择日期列..."
+                            placeholder="选择日期列…"
                           />
                         </div>
 
@@ -1646,7 +1648,7 @@ export default function ViewBuilderPage() {
                                 trunc_column: column,
                               });
                             }}
-                            placeholder="选择日期列..."
+                            placeholder="选择日期列…"
                           />
                         </div>
 
@@ -1875,6 +1877,7 @@ export default function ViewBuilderPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="移除筛选条件"
                         className="shrink-0"
                         onClick={() => handleRemoveFilter(i)}
                       >
@@ -2004,6 +2007,7 @@ export default function ViewBuilderPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label="移除聚合"
                           className="shrink-0"
                           onClick={() => handleRemoveAggregation(i)}
                         >
@@ -2045,7 +2049,7 @@ export default function ViewBuilderPage() {
                             updated[i] = { ...updated[i], column: key };
                             viewBuilder.setOrderBy(updated);
                           }}
-                          placeholder="选择排序列..."
+                          placeholder="选择排序列…"
                         />
                       </div>
                       <Select
@@ -2080,6 +2084,7 @@ export default function ViewBuilderPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="移除排序"
                         className="shrink-0"
                         onClick={() =>
                           viewBuilder.setOrderBy(state.orderBy.filter((_, idx) => idx !== i))

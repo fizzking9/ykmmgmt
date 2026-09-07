@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Upload } from "lucide-react";
 import { useState } from "react";
 
 function statusBadge(status: string) {
@@ -113,8 +113,13 @@ export function ImportHistoryPanel() {
       {/* Empty state */}
       {!isLoading && !isError && data && data.items.length === 0 && (
         <div className="rounded-md bg-muted/30 p-16 text-center">
+          <Upload className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-lg text-muted-foreground">暂无导入记录</p>
           <p className="mt-1 text-sm text-muted-foreground">上传文件后将在此显示导入历史</p>
+          <Button className="mt-4" variant="outline" onClick={() => refetch()}>
+            <RefreshCw className="mr-1 h-4 w-4" />
+            刷新
+          </Button>
         </div>
       )}
 

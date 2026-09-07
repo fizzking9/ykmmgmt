@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog } from "@/components/ui/dialog";
 import { useViews, useViewData, useDeleteView, type ViewListResponse } from "@/hooks/useViews";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -66,30 +67,24 @@ function DeleteConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      {/* Dialog */}
-      <div className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-        <h3 className="text-lg font-semibold">确认删除</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          确定要删除视图「{viewName}」吗？此操作不可撤销。
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isPending}>
-            取消
-          </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
-            {isPending ? (
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="mr-1 h-4 w-4" />
-            )}
-            确定
-          </Button>
-        </div>
+    <Dialog open onClose={onCancel} title="确认删除">
+      <p className="text-sm text-muted-foreground">
+        确定要删除视图「{viewName}」吗？此操作不可撤销。
+      </p>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel} disabled={isPending}>
+          取消
+        </Button>
+        <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+          {isPending ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-1 h-4 w-4" />
+          )}
+          确定
+        </Button>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -116,15 +111,23 @@ function PreviewDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`预览: ${viewName}`}
+      className="fixed inset-0 z-50 flex items-center justify-center"
+    >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
       {/* Dialog */}
-      <div className="relative z-10 flex max-h-[85vh] w-full max-w-5xl flex-col rounded-lg border bg-background shadow-lg">
+      <div
+        tabIndex={-1}
+        className="relative z-10 flex max-h-[85dvh] w-full max-w-5xl flex-col rounded-lg border bg-background shadow-lg outline-none"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b px-6 py-4">
           <h3 className="text-lg font-semibold">预览: {viewName}</h3>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label="关闭预览" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
