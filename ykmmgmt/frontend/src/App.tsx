@@ -28,6 +28,7 @@ import NotFoundPage from "@/pages/NotFoundPage";
 const VisualizationBuilderPage = lazy(() => import("@/pages/VisualizationBuilderPage"));
 const ViewBuilderPage = lazy(() => import("@/pages/ViewBuilderPage"));
 const DashboardBuilderPage = lazy(() => import("@/pages/DashboardBuilderPage"));
+const WelcomePage = lazy(() => import("@/pages/WelcomePage"));
 
 function FullPageSpinner() {
   return (
@@ -45,14 +46,35 @@ function LazyFallback() {
   );
 }
 
+/** Black placeholder while the lazy welcome chunk loads — avoids a white flash. */
+function SplashFallback() {
+  return <div className="min-h-dvh w-full bg-black" />;
+}
+
+/** Public splash: already-authenticated users are sent straight into the app. */
+function WelcomeRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return <SplashFallback />;
+  if (user) return <Navigate to="/" replace />;
+  return (
+    <Suspense fallback={<SplashFallback />}>
+      <WelcomePage />
+    </Suspense>
+  );
+}
+
 /** Blocks anonymous access; remembers the requested path for post-login redirect. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return <FullPageSpinner />;
-  if (!user)
+  if (!user) {
+    // Logged-out visit to the app root → the branded welcome splash. Deep
+    // links to any other path still go to /login, preserving the request.
+    if (location.pathname === "/") return <Navigate to="/welcome" replace />;
     return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  }
   return <>{children}</>;
 }
 
@@ -63,6 +85,7 @@ export default function App() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/welcome" element={<WelcomeRoute />} />
 
         <Route
           element={
