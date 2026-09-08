@@ -26,6 +26,7 @@
 | **Routing** | React Router v6 | Standard SPA routing |
 | **Testing** | Vitest + React Testing Library | Vite-native, fast, component-level tests; serves as the formal validation gate for feature completion |
 | **Responsive design** | Tailwind CSS breakpoints | Mobile-first responsive utilities (`sm:`, `md:`, `lg:`, `xl:`) built into every component |
+| **WebGL / 3D** | Three.js | Particle/glow rendering for the Phase 16 welcome splash; loaded only in that lazy chunk so the main bundle is unaffected |
 
 ## Database
 

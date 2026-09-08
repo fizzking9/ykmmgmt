@@ -441,17 +441,21 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ---
 
-## Phase 16 — Platform Data Scraping (Future, Post-Deployment)
+## Phase 16 — Welcome Page (Particle Splash)
 
-**Goal:** Pull data from our own platform — configurable as one-time or scheduled scrapes.
+**Goal:** A public, standalone welcome page that greets visitors before login — a luminous particle spiral assembles "YKM" + a cat-head silhouette on a black background (inspired by OpenAI's release-page hero).
 
-> ⚠️ **Deferred:** This phase is a future feature, planned AFTER deployment (Phase 13) and the Phase 15 frontend upgrade. The 数据抓取 tab in the 数据导入 page (Phase 4 extended scope) already ships as a "coming soon" placeholder and will become the entry point for this feature. (Renumbered from Phase 15 → Phase 16 on 2026-09-07 to make room for the Frontend Upgrade.)
+> **Scope:** A separate, beyond-core feature. Self-contained and lazy-loaded so it never touches the main app bundle, auth, or data. Hero splash only — full-screen particle art plus a minimal headline and one enter/login CTA.
 
-> ⚠️ **Dependency:** Details about the platform (API endpoints, page structure, auth) will be provided when we reach this phase.
+- [x] Particle engine: Three.js `Points` + custom glow shader + `UnrealBloomPass`, additive blending on black, ice-white/pale-blue luminous particles
+- [x] Glyph sampling: render "YKM" (Geist, awaited via `document.fonts.ready`) and a cat-head `Path2D` to an offscreen 2D canvas, sample ink pixels into particle home-positions (shared pipeline for text + shape)
+- [x] Ambient cosmos: a sparse field of dim, slowly drifting particles scattered across the whole viewport behind the main glyph
+- [x] Motion: spiral assemble (~2.5s) → idle shimmer + slow rotation; mouse interaction — particles flow with cursor movement, then spring back to position
+- [x] Drag-to-rotate: glyph extruded into a volumetric relief; drag spins it a full 360° (particle flow suppressed while dragging); springs back face-on on release
+- [x] Perf/fallback: max fidelity always (full effects on every device); static black fallback when WebGL is unavailable; full disposal on unmount
+- [x] Routing: public `/welcome` route (lazy); logged-out hits to `/` land on `/welcome` (deep links still go to `/login` preserving `from`); `/welcome` redirects logged-in users into `/`; logout navigates to `/welcome`
+- [x] Deps: add `three` + `@types/three` (isolated to the lazy chunk)
+- [x] Validation: unit-test the pure point-selection logic; render-test `WelcomePage` with Three.js mocked; `lint`/`test`/`build` green
 
-- [ ] Scraping source configuration: target URL/endpoint, auth credentials, schedule (cron or one-time)
-- [ ] Scraping engine integrated into FastAPI (APScheduler for scheduled runs)
-- [ ] Scraped data flows through the same cleaning pipeline as file imports (Phase 3)
-- [ ] Scrape job tracked as an `ImportJob` — status, rows ingested, errors
-- [ ] Manual "Scrape Now" trigger per source
-- [ ] Scrape history viewable alongside file import history (in the 导入历史 tab of the 数据导入 page)
+---
+

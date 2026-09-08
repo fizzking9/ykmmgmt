@@ -106,7 +106,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
   async function handleLogout() {
     await logout();
     onNavClick?.();
-    navigate("/login", { replace: true });
+    navigate("/welcome", { replace: true });
   }
 
   return (
