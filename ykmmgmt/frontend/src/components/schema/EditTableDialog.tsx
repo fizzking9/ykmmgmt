@@ -48,6 +48,7 @@ interface ColumnDraft {
   description: string;
   default: string;
   foreign_key: string;
+  on_delete: string;
 }
 
 function draftFromColumn(col: SchemaColumnDetail): ColumnDraft {
@@ -61,6 +62,7 @@ function draftFromColumn(col: SchemaColumnDetail): ColumnDraft {
     description: col.description ?? "",
     default: col.default ?? "",
     foreign_key: col.foreign_key ?? "",
+    on_delete: col.on_delete ?? "",
   };
 }
 
@@ -81,6 +83,11 @@ function buildPayload(col: SchemaColumnDetail, d: ColumnDraft): ModifyColumnPayl
   if (d.description !== (col.description ?? "")) p.description = d.description;
   if (d.default !== (col.default ?? "")) p.default = d.default;
   if ((d.foreign_key || "") !== (col.foreign_key ?? "")) p.foreign_key = d.foreign_key || "";
+  // Referential action diffs only matter while the FK exists; removing the
+  // FK clears the action server-side, so never send on_delete without a FK.
+  if (d.foreign_key && (d.on_delete || "") !== (col.on_delete ?? "")) {
+    p.on_delete = d.on_delete || "";
+  }
   return Object.keys(p).length > 0 ? p : null;
 }
 
@@ -114,6 +121,7 @@ function EditTableDialogContent({
   const [newLabel, setNewLabel] = useState("");
   const [newNullable, setNewNullable] = useState(true);
   const [newForeignKey, setNewForeignKey] = useState("");
+  const [newOnDelete, setNewOnDelete] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newDefault, setNewDefault] = useState("");
 
@@ -131,7 +139,7 @@ function EditTableDialogContent({
     .map(
       (c) =>
         `${c.name}|${c.type}|${c.nullable}|${c.unique}|${c.label}|${c.description ?? ""}|` +
-        `${c.default ?? ""}|${c.foreign_key ?? ""}`,
+        `${c.default ?? ""}|${c.foreign_key ?? ""}|${c.on_delete ?? ""}`,
     )
     .join(";");
   useEffect(() => {
@@ -165,6 +173,7 @@ function EditTableDialogContent({
         length: newType === "String" ? Number(newLength) || 255 : null,
         nullable: newNullable,
         foreign_key: newForeignKey.trim() || null,
+        on_delete: newOnDelete || null,
         label: newLabel.trim() || newName.trim(),
         description: newDescription.trim() || null,
         default: newDefault.trim() || null,
@@ -177,6 +186,7 @@ function EditTableDialogContent({
           setNewLength("255");
           setNewNullable(true);
           setNewForeignKey("");
+          setNewOnDelete("");
           setNewDescription("");
           setNewDefault("");
         },
@@ -389,7 +399,12 @@ function EditTableDialogContent({
             <ForeignKeyPicker
               ariaPrefix="新列"
               value={newForeignKey}
-              onChange={(v) => setNewForeignKey(v)}
+              onChange={(v) => {
+                setNewForeignKey(v);
+                if (!v) setNewOnDelete("");
+              }}
+              onDeleteValue={newOnDelete}
+              onOnDeleteChange={setNewOnDelete}
             />
           </div>
         </section>
@@ -494,7 +509,15 @@ function EditTableDialogContent({
                     <ForeignKeyPicker
                       ariaPrefix={`列 ${col.name} 的`}
                       value={draft.foreign_key}
-                      onChange={(v) => updateDraft(col.name, { foreign_key: v })}
+                      onChange={(v) =>
+                        updateDraft(col.name, {
+                          foreign_key: v,
+                          // Removing the FK clears its referential action
+                          ...(v ? {} : { on_delete: "" }),
+                        })
+                      }
+                      onDeleteValue={draft.on_delete}
+                      onOnDeleteChange={(v) => updateDraft(col.name, { on_delete: v })}
                     />
                   </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

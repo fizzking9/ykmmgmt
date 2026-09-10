@@ -20,6 +20,8 @@ export interface SchemaColumnDetail {
   primary_key: boolean;
   unique: boolean;
   foreign_key: string | null;
+  /** Referential action for the FK, e.g. "CASCADE"; null = default NO ACTION. */
+  on_delete: string | null;
   label: string;
   description: string | null;
   default: string | null;
@@ -52,6 +54,8 @@ export interface ColumnDefinitionPayload {
   unique?: boolean;
   primary_key?: boolean;
   foreign_key?: string | null;
+  /** Referential action for the FK; empty/null = default NO ACTION. */
+  on_delete?: string | null;
   label?: string | null;
   description?: string | null;
   default?: string | null;
@@ -101,6 +105,8 @@ export interface ModifyColumnPayload {
   description?: string;
   default?: string;
   foreign_key?: string;
+  /** Referential action for the FK; empty string = default NO ACTION. */
+  on_delete?: string;
 }
 
 export interface RenameTablePayload {

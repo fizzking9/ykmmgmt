@@ -27,6 +27,7 @@ function emptyColumn(): ColumnDefinitionPayload {
     unique: false,
     primary_key: false,
     foreign_key: "",
+    on_delete: "",
     label: "",
     description: "",
     default: "",
@@ -59,7 +60,7 @@ export default function SchemaCreateTablePage() {
     setColumns((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
   };
 
-  // Only one column can be the primary key — checking one unchecks the rest.
+  // Multiple columns may be checked, forming a composite primary key.
   // A PK is inherently NOT NULL and unique, so those flags are locked too.
   const togglePrimaryKey = (index: number, checked: boolean) => {
     setColumns((prev) =>
@@ -71,7 +72,7 @@ export default function SchemaCreateTablePage() {
               nullable: checked ? false : c.nullable,
               unique: checked ? false : c.unique,
             }
-          : { ...c, primary_key: false },
+          : c,
       ),
     );
   };
@@ -122,6 +123,7 @@ export default function SchemaCreateTablePage() {
           unique: c.unique ?? false,
           primary_key: c.primary_key ?? false,
           foreign_key: c.foreign_key?.trim() || null,
+          on_delete: c.on_delete?.trim() || null,
           label: c.label?.trim() || c.name.trim(),
           description: c.description?.trim() || null,
           default: c.default?.trim() || null,
@@ -361,6 +363,8 @@ export default function SchemaCreateTablePage() {
                     ariaPrefix={`第${i + 1}列`}
                     value={col.foreign_key ?? ""}
                     onChange={(v) => updateColumn(i, { foreign_key: v })}
+                    onDeleteValue={col.on_delete ?? ""}
+                    onOnDeleteChange={(v) => updateColumn(i, { on_delete: v })}
                   />
                 </div>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

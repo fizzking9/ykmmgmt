@@ -317,13 +317,14 @@ def validate_identifier(name: str, kind: str, reserved: frozenset[str]) -> None:
 
 
 def validate_column_definitions(columns: list[dict[str, Any]]) -> None:
-    """Validate a list of column definition dicts (incl. PK/FK flags)."""
+    """Validate a list of column definition dicts (incl. PK/FK flags).
+
+    One or more ``primary_key`` columns form a (possibly composite) primary
+    key; with none, callers add a surrogate ``id`` column.
+    """
     if not columns:
         raise SchemaManagerError("至少需要一个列定义")
     seen: set[str] = set()
-    pk_cols = [c["name"] for c in columns if c.get("primary_key")]
-    if len(pk_cols) > 1:
-        raise SchemaManagerError(f"只能有一个主键列，当前标记了: {'、'.join(pk_cols)}")
     for col in columns:
         name = col["name"]
         validate_identifier(name, "列", RESERVED_COLUMN_NAMES)
@@ -339,9 +340,39 @@ def validate_column_definitions(columns: list[dict[str, Any]]) -> None:
         fk = (col.get("foreign_key") or "").strip()
         if fk:
             validate_foreign_key(name, fk)
+        if col.get("on_delete"):
+            if not fk:
+                raise SchemaManagerError(f"列 '{name}' 设置了引用动作但未设置外键")
+            validate_on_delete(name, col.get("on_delete"), col.get("nullable", True))
 
 
 FK_REF_RE = re.compile(r"^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$")
+
+# Referential actions for FK constraints (normalized upper-case).
+# None / "NO ACTION" mean the PostgreSQL default: reject orphan writes.
+FK_ON_DELETE_ACTIONS: tuple[str, ...] = ("NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT")
+
+
+def normalize_on_delete(value: Any) -> str | None:
+    """Normalize a referential-action string; empty / "NO ACTION" → None."""
+    action = str(value or "").strip().upper()
+    if not action or action == "NO ACTION":
+        return None
+    return action
+
+
+def validate_on_delete(column_name: str, value: Any, fk_col_nullable: bool = True) -> str | None:
+    """Validate a FK referential action; returns the normalized value."""
+    action = normalize_on_delete(value)
+    if action is None:
+        return None
+    if action not in FK_ON_DELETE_ACTIONS:
+        raise SchemaManagerError(
+            f"列 '{column_name}' 的引用动作 '{value}' 无效，仅支持：{'、'.join(FK_ON_DELETE_ACTIONS)}"
+        )
+    if action in ("SET NULL", "SET DEFAULT") and not fk_col_nullable:
+        raise SchemaManagerError(f"列 '{column_name}' 的引用动作 {action} 要求本列允许为空")
+    return action
 
 
 def validate_foreign_key(column_name: str, fk_ref: str) -> tuple[str, str]:
@@ -356,8 +387,11 @@ def validate_foreign_key(column_name: str, fk_ref: str) -> tuple[str, str]:
     target_column = target_model.__table__.columns.get(target_col)
     if target_column is None:
         raise SchemaManagerError(f"外键目标列 '{target_table}.{target_col}' 不存在")
+    # The FK target must be covered by a SINGLE-column uniqueness guarantee:
+    # a composite PK/unique component alone is not referencable in PostgreSQL.
+    target_pk_cols = [c.name for c in target_model.__table__.columns if c.primary_key]
     is_unique_target = (
-        target_column.primary_key
+        (target_column.primary_key and len(target_pk_cols) == 1)
         or target_column.unique
         or any(
             isinstance(con, UniqueConstraint) and [c.name for c in con.columns] == [target_col]
@@ -365,7 +399,9 @@ def validate_foreign_key(column_name: str, fk_ref: str) -> tuple[str, str]:
         )
     )
     if not is_unique_target:
-        raise SchemaManagerError(f"外键目标列 '{target_table}.{target_col}' 必须是主键或唯一列")
+        raise SchemaManagerError(
+            f"外键目标列 '{target_table}.{target_col}' 必须是单列主键或唯一列（复合主键的组成部分不能单独作为外键目标）"
+        )
     return target_table, target_col
 
 
@@ -424,9 +460,9 @@ def build_dynamic_model(
 ) -> type:
     """Construct a SQLAlchemy model class at runtime from column definitions.
 
-    If one column is flagged primary_key it becomes the table's PK and no
-    surrogate ``id`` column is generated; otherwise an auto-increment ``id``
-    is added. ``default`` entries become server defaults.
+    Columns flagged primary_key form the table's (possibly composite) PK
+    and no surrogate ``id`` column is generated; otherwise an auto-increment
+    ``id`` is added. ``default`` entries become server defaults.
 
     Ingestion settings: an explicit ``upsert_key`` (single or composite)
     becomes a unique constraint named ``uq_{table}_key`` (unless it equals
@@ -444,7 +480,7 @@ def build_dynamic_model(
         extra: list[Any] = []
         fk = (col.get("foreign_key") or "").strip()
         if fk:
-            extra.append(ForeignKey(fk))
+            extra.append(ForeignKey(fk, ondelete=normalize_on_delete(col.get("on_delete"))))
         default_value = (col.get("default") or "").strip() if isinstance(col.get("default"), str) else None
         server_default = col.get("_server_default_clause")
         if server_default is None and default_value:
@@ -472,6 +508,7 @@ def build_dynamic_model(
                     [col["name"]],
                     [f"{target_table}.{target_col}"],
                     name=f"fk_{table_name}_{col['name']}",
+                    ondelete=normalize_on_delete(col.get("on_delete")),
                 )
             )
     # Explicit upsert key — the PK already provides uniqueness for itself
@@ -551,8 +588,10 @@ def extract_column_definitions(model: type) -> list[dict[str, Any]]:
         and next(iter(con.columns)).name not in _HIDDEN_COLUMNS
     }
     fk_refs: dict[str, str] = {}
+    fk_ondeletes: dict[str, str | None] = {}
     for fk in model.__table__.foreign_keys:
         fk_refs[fk.parent.name] = f"{fk.column.table.name}.{fk.column.name}"
+        fk_ondeletes[fk.parent.name] = fk.ondelete
     definitions: list[dict[str, Any]] = []
     for col in mapper.columns:
         if col.name in _HIDDEN_COLUMNS or (col.primary_key and col.name == "id"):
@@ -567,6 +606,7 @@ def extract_column_definitions(model: type) -> list[dict[str, Any]]:
                 "unique": col.name in unique_cols,
                 "primary_key": col.primary_key,
                 "foreign_key": fk_refs.get(col.name),
+                "on_delete": fk_ondeletes.get(col.name),
                 "label": getattr(col, "comment", None) or col.name,
                 "default": _server_default_str(col),
                 # Preserve an existing DB default verbatim when rebuilding
@@ -667,6 +707,7 @@ async def restore_dynamic_tables(conn: Any) -> int:
                     "unique": col.name in unique_cols,
                     "primary_key": col.primary_key,
                     "foreign_key": f"{fk.column.table.name}.{fk.column.name}" if fk else None,
+                    "on_delete": fk.ondelete if fk else None,
                     "label": col.comment or col.name,
                     "default": _server_default_str(col),
                     # Keep the DB default verbatim instead of re-rendering it
@@ -688,6 +729,7 @@ async def restore_dynamic_tables(conn: Any) -> int:
                     "unique": "content_hash" in unique_cols,
                     "primary_key": False,
                     "foreign_key": None,
+                    "on_delete": None,
                     "label": ch_col.comment or "内容哈希",
                     "default": None,
                     "_server_default_clause": None,
@@ -949,8 +991,10 @@ async def table_detail(db: AsyncSession, name: str) -> dict[str, Any]:
     mapper = sa_inspect(model)
     unique_cols = _unique_column_names(model)
     fk_refs: dict[str, str] = {}
+    fk_ondeletes: dict[str, str | None] = {}
     for fk in model.__table__.foreign_keys:
         fk_refs[fk.parent.name] = f"{fk.column.table.name}.{fk.column.name}"
+        fk_ondeletes[fk.parent.name] = fk.ondelete
     columns: list[dict[str, Any]] = []
     for col in mapper.columns:
         col_meta = meta.get(col.name, {})
@@ -962,6 +1006,7 @@ async def table_detail(db: AsyncSession, name: str) -> dict[str, Any]:
                 "primary_key": col.primary_key,
                 "unique": col.name in unique_cols,
                 "foreign_key": fk_refs.get(col.name),
+                "on_delete": fk_ondeletes.get(col.name),
                 "label": getattr(col, "comment", None) or col.name,
                 "description": col_meta.get("description"),
                 "default": col_meta.get("default_value") or _server_default_str(col),
@@ -1266,6 +1311,7 @@ def create_table_ops(
 ) -> str:
     """op.create_table(...) source for a dynamic table (with bookkeeping cols).
 
+    All columns flagged primary_key form a (possibly composite) PK constraint.
     When display_name is given, a COMMENT ON TABLE statement stores it in the
     database so the Chinese name survives server restarts. An explicit
     upsert key (that differs from the PK) becomes ``uq_{table}_key``;
@@ -1284,7 +1330,8 @@ def create_table_ops(
         "nullable=True, comment='导入时间'),"
     )
     if pk_cols:
-        lines.append(f"    sa.PrimaryKeyConstraint('{pk_cols[0]}'),")
+        pk_sql = ", ".join(f"'{c}'" for c in pk_cols)
+        lines.append(f"    sa.PrimaryKeyConstraint({pk_sql}),")
     else:
         lines.append("    sa.PrimaryKeyConstraint('id'),")
     for col in columns:
@@ -1292,8 +1339,11 @@ def create_table_ops(
             lines.append(f"    sa.UniqueConstraint('{col['name']}', name='uq_{table_name}_{col['name']}'),")
         fk = (col.get("foreign_key") or "").strip()
         if fk:
+            ondelete = normalize_on_delete(col.get("on_delete"))
+            ondelete_part = f", ondelete='{ondelete}'" if ondelete else ""
             lines.append(
-                f"    sa.ForeignKeyConstraint(['{col['name']}'], ['{fk}'], name='fk_{table_name}_{col['name']}'),"
+                f"    sa.ForeignKeyConstraint(['{col['name']}'], ['{fk}'], "
+                f"name='fk_{table_name}_{col['name']}'{ondelete_part}),"
             )
     if upsert_key and list(upsert_key) != pk_cols:
         cols_sql = ", ".join(f"'{c}'" for c in upsert_key)
@@ -1318,9 +1368,11 @@ def add_column_ops(table_name: str, col: dict[str, Any]) -> str:
     fk = (col.get("foreign_key") or "").strip()
     if fk:
         target_table, target_col = fk.split(".", 1)
+        ondelete = normalize_on_delete(col.get("on_delete"))
+        ondelete_part = f", ondelete='{ondelete}'" if ondelete else ""
         lines.append(
             f"    op.create_foreign_key('fk_{table_name}_{col['name']}', '{table_name}', "
-            f"'{target_table}', ['{col['name']}'], ['{target_col}'])"
+            f"'{target_table}', ['{col['name']}'], ['{target_col}']{ondelete_part})"
         )
     return "\n".join(lines)
 
@@ -1393,11 +1445,12 @@ def drop_fk_ops(table_name: str, col_name: str) -> str:
     return f"    op.drop_constraint('fk_{table_name}_{col_name}', '{table_name}', type_='foreignkey')"
 
 
-def create_fk_ops(table_name: str, col_name: str, fk_ref: str) -> str:
+def create_fk_ops(table_name: str, col_name: str, fk_ref: str, ondelete: str | None = None) -> str:
     target_table, target_col = fk_ref.split(".", 1)
+    ondelete_part = f", ondelete='{ondelete}'" if ondelete else ""
     return (
         f"    op.create_foreign_key('fk_{table_name}_{col_name}', '{table_name}', "
-        f"'{target_table}', ['{col_name}'], ['{target_col}'])"
+        f"'{target_table}', ['{col_name}'], ['{target_col}']{ondelete_part})"
     )
 
 

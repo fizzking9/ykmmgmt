@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { DeleteTableDialog } from "@/components/schema/DeleteTableDialog";
 import { EditTableDialog } from "@/components/schema/EditTableDialog";
+import { fkActionLabel } from "@/lib/fk-actions";
 import { useSchemaTableDetail } from "@/hooks/useSchema";
 import { useNavigate } from "react-router-dom";
 
@@ -119,6 +120,9 @@ export default function SchemaTableDetailPage() {
                     {col.foreign_key && (
                       <Badge variant="outline" className="ml-2">
                         外键 → {col.foreign_key}
+                        {col.on_delete && col.on_delete !== "NO ACTION"
+                          ? `（${fkActionLabel(col.on_delete)}）`
+                          : ""}
                       </Badge>
                     )}
                   </TableCell>

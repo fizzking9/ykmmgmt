@@ -532,21 +532,74 @@ async def test_create_with_user_primary_key():
 
 
 @pytest.mark.asyncio
-async def test_only_one_primary_key_allowed():
+async def test_create_with_composite_primary_key():
+    """Multiple PK columns form a composite PRIMARY KEY in the database itself."""
+    name = _unique("cpk")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post(
-            "/api/schema/tables",
-            json={
-                "name": _unique("badpk"),
-                "columns": [
-                    {"name": "a", "type": "Integer", "primary_key": True, "label": "a"},
-                    {"name": "b", "type": "Integer", "primary_key": True, "label": "b"},
-                ],
-            },
-        )
-        assert resp.status_code == 400
-        assert "主键" in resp.json()["detail"]
+        try:
+            resp = await client.post(
+                "/api/schema/tables",
+                json={
+                    "name": name,
+                    "display_name": "复合主键表",
+                    "columns": [
+                        {
+                            "name": "order_no",
+                            "type": "String",
+                            "length": 50,
+                            "primary_key": True,
+                            "label": "订单号",
+                        },
+                        {"name": "line_no", "type": "Integer", "primary_key": True, "label": "行号"},
+                        {"name": "qty", "type": "Numeric", "label": "数量"},
+                    ],
+                },
+            )
+            assert resp.status_code == 201, resp.text
+            detail = resp.json()
+            col_names = [c["name"] for c in detail["columns"]]
+            assert "id" not in col_names  # no surrogate id for a composite PK
+            by_name = {c["name"]: c for c in detail["columns"]}
+            assert by_name["order_no"]["primary_key"] is True
+            assert by_name["order_no"]["nullable"] is False
+            assert by_name["line_no"]["primary_key"] is True
+            assert by_name["line_no"]["nullable"] is False
+
+            # The database carries BOTH columns in the PK constraint
+            from sqlalchemy import inspect as sa_inspect
+
+            from app.core.database import engine
+
+            async with engine.connect() as conn:
+
+                def _pk(sync_conn):
+                    return sa_inspect(sync_conn).get_pk_constraint(name)
+
+                pk = await conn.run_sync(_pk)
+            assert set(pk["constrained_columns"]) == {"order_no", "line_no"}
+
+            # A FK referencing one component of the composite PK is rejected —
+            # PostgreSQL requires the target to be unique on its own.
+            resp = await client.post(
+                "/api/schema/tables",
+                json={
+                    "name": _unique("cpkchild"),
+                    "columns": [
+                        {
+                            "name": "x",
+                            "type": "String",
+                            "length": 50,
+                            "foreign_key": f"{name}.order_no",
+                            "label": "x",
+                        },
+                    ],
+                },
+            )
+            assert resp.status_code == 400
+            assert "复合主键" in resp.json()["detail"]
+        finally:
+            await purge_dynamic_table(name)
 
 
 @pytest.mark.asyncio
@@ -644,6 +697,123 @@ async def test_dynamic_table_restored_after_restart():
             assert resp.status_code == 200, resp.text
         finally:
             await purge_dynamic_table(name)
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_on_delete_actions():
+    """FK referential actions: create, reflect, edit, and validate."""
+    dept = _unique("odparent")
+    emp = _unique("odchild")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        try:
+            resp = await client.post(
+                "/api/schema/tables",
+                json={
+                    "name": dept,
+                    "columns": [
+                        {"name": "dept_id", "type": "Integer", "primary_key": True, "label": "部门编号"},
+                        {"name": "dept_name", "type": "String", "length": 100, "label": "部门"},
+                    ],
+                },
+            )
+            assert resp.status_code == 201, resp.text
+
+            # Child with ON DELETE CASCADE
+            resp = await client.post(
+                "/api/schema/tables",
+                json={
+                    "name": emp,
+                    "columns": [
+                        {"name": "emp_id", "type": "Integer", "primary_key": True, "label": "员工编号"},
+                        {
+                            "name": "dept_id",
+                            "type": "Integer",
+                            "foreign_key": f"{dept}.dept_id",
+                            "on_delete": "CASCADE",
+                            "label": "部门",
+                        },
+                    ],
+                },
+            )
+            assert resp.status_code == 201, resp.text
+            fk_col = next(c for c in resp.json()["columns"] if c["name"] == "dept_id")
+            assert fk_col["on_delete"] == "CASCADE"
+
+            from sqlalchemy import inspect as sa_inspect
+
+            from app.core.database import engine
+
+            async with engine.connect() as conn:
+
+                def _fks(sync_conn):
+                    return sa_inspect(sync_conn).get_foreign_keys(emp)
+
+                # The constraint carries the action in the database itself
+                fks = await conn.run_sync(_fks)
+            assert fks and fks[0]["options"].get("ondelete") == "CASCADE"
+
+            # Edit the action to SET NULL (column is nullable → allowed)
+            resp = await client.put(
+                f"/api/schema/tables/{emp}/columns/dept_id",
+                json={"on_delete": "SET NULL"},
+            )
+            assert resp.status_code == 200, resp.text
+            async with engine.connect() as conn:
+                fks = await conn.run_sync(_fks)
+            assert fks and fks[0]["options"].get("ondelete") == "SET NULL"
+
+            # Resetting to the PostgreSQL default (NO ACTION) via empty string
+            resp = await client.put(
+                f"/api/schema/tables/{emp}/columns/dept_id",
+                json={"on_delete": ""},
+            )
+            assert resp.status_code == 200, resp.text
+            async with engine.connect() as conn:
+                fks = await conn.run_sync(_fks)
+            assert fks and not fks[0]["options"].get("ondelete")
+
+            # Invalid action value is rejected before any migration runs
+            resp = await client.put(
+                f"/api/schema/tables/{emp}/columns/dept_id",
+                json={"on_delete": "DELETE EVERYTHING"},
+            )
+            assert resp.status_code == 400
+
+            # SET NULL on a NOT NULL column is rejected
+            resp = await client.put(
+                f"/api/schema/tables/{emp}/columns/dept_id",
+                json={"nullable": False, "on_delete": "SET NULL"},
+            )
+            assert resp.status_code == 400
+            assert "允许为空" in resp.json()["detail"]
+
+            # Setting an action on a column without a foreign key is rejected
+            resp = await client.put(
+                f"/api/schema/tables/{emp}/columns/emp_id",
+                json={"on_delete": "CASCADE"},
+            )
+            assert resp.status_code == 400
+            assert "外键" in resp.json()["detail"]
+
+            # ...and the same guard applies at table creation
+            resp = await client.post(
+                "/api/schema/tables",
+                json={
+                    "name": _unique("odbad"),
+                    "columns": [{"name": "x", "type": "Integer", "on_delete": "CASCADE", "label": "x"}],
+                },
+            )
+            assert resp.status_code == 400
+
+            # Delete the child first, then the parent succeeds
+            resp = await client.delete(f"/api/schema/tables/{emp}")
+            assert resp.status_code == 200, resp.text
+            resp = await client.delete(f"/api/schema/tables/{dept}")
+            assert resp.status_code == 200, resp.text
+        finally:
+            # Batch purge: child/parent migrations interleave
+            await purge_dynamic_tables(emp, dept)
 
 
 @pytest.mark.asyncio

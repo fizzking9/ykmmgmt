@@ -244,6 +244,25 @@ describe("新建数据表（手动）", () => {
       nullable: false,
     });
   });
+
+  it("多个列可同时设为主键（复合主键）", () => {
+    renderWithProviders(<SchemaCreateTablePage />, "/schema/create");
+    fireEvent.change(screen.getByLabelText(/英文表名/), { target: { value: "cpk_table" } });
+    fireEvent.change(screen.getByLabelText("第1列列名"), { target: { value: "order_no" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加列" }));
+    fireEvent.change(screen.getByLabelText("第2列列名"), { target: { value: "line_no" } });
+
+    // Checking the second PK column no longer unchecks the first
+    fireEvent.click(screen.getByLabelText("第1列设为主键"));
+    fireEvent.click(screen.getByLabelText("第2列设为主键"));
+    expect(screen.getByLabelText("第1列设为主键")).toBeChecked();
+    expect(screen.getByLabelText("第2列设为主键")).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: /创建数据表/ }));
+    const payload = createMutateMock.mock.calls[0][0];
+    expect(payload.columns[0]).toMatchObject({ name: "order_no", primary_key: true });
+    expect(payload.columns[1]).toMatchObject({ name: "line_no", primary_key: true });
+  });
 });
 
 // ── Create wizard: CSV path ────────────────────────────────────────────────
@@ -420,6 +439,25 @@ describe("编辑表结构对话框", () => {
     expect(modifyMutateMock.mock.calls[0][0]).toMatchObject({
       column: "title",
       foreign_key: "departments.dept_id",
+    });
+  });
+
+  it("选择外键后可设置引用动作并随修改提交", () => {
+    renderWithProviders(<EditTableDialog tableName="customer_orders" onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText("列 title 的外键目标表"), {
+      target: { value: "departments" } },
+    );
+    // The referential-action select appears once a FK target is chosen
+    const actionSelect = screen.getByLabelText("列 title 的外键引用动作");
+    expect(actionSelect).toHaveValue("");
+    fireEvent.change(actionSelect, { target: { value: "CASCADE" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(modifyMutateMock.mock.calls[0][0]).toMatchObject({
+      column: "title",
+      foreign_key: "departments.dept_id",
+      on_delete: "CASCADE",
     });
   });
 

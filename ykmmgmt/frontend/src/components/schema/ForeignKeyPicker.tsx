@@ -1,3 +1,4 @@
+import { FK_ACTION_OPTIONS } from "@/lib/fk-actions";
 import { useFkOptions } from "@/hooks/useSchema";
 
 interface ForeignKeyPickerProps {
@@ -6,11 +7,21 @@ interface ForeignKeyPickerProps {
   onChange: (value: string) => void;
   /** Prefix for the aria labels, e.g. "第1列" or "新列". */
   ariaPrefix: string;
+  /** Referential action + change handler; providing both shows the picker. */
+  onDeleteValue?: string;
+  onOnDeleteChange?: (value: string) => void;
 }
 
-/** Two-level dropdown picker for foreign-key targets (table → column).
+/** Two-level dropdown picker for foreign-key targets (table → column),
+ *  plus an optional ON DELETE referential-action select.
  *  Only PK/unique columns are listed, so the choice is always valid. */
-export function ForeignKeyPicker({ value, onChange, ariaPrefix }: ForeignKeyPickerProps) {
+export function ForeignKeyPicker({
+  value,
+  onChange,
+  ariaPrefix,
+  onDeleteValue,
+  onOnDeleteChange,
+}: ForeignKeyPickerProps) {
   const fkQuery = useFkOptions();
   const options = fkQuery.data ?? [];
 
@@ -57,6 +68,20 @@ export function ForeignKeyPicker({ value, onChange, ariaPrefix }: ForeignKeyPick
           </option>
         ))}
       </select>
+      {onDeleteValue !== undefined && onOnDeleteChange && value && (
+        <select
+          aria-label={`${ariaPrefix}外键引用动作`}
+          className={selectCls}
+          value={onDeleteValue || ""}
+          onChange={(e) => onOnDeleteChange(e.target.value)}
+        >
+          {FK_ACTION_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      )}
     </span>
   );
 }
