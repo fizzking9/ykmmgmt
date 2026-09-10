@@ -318,3 +318,57 @@ class TestImportServiceIntegration:
                 assert "cleaning_report" in result
         finally:
             tmp_path.unlink(missing_ok=True)
+
+
+@pytest.mark.usefixtures("_dispose_engine_after_test")
+async def test_coercion_equal_duplicates_within_batch_count_correctly(tmp_path):
+    """Rows identical only after type coercion (e.g. "10.50" vs "10.5") share
+    one content_hash; within one batch they must collapse and count as
+    skipped — rows_inserted must not credit both (else
+    inserted+skipped exceeds total_rows)."""
+    import uuid
+
+    from httpx import ASGITransport, AsyncClient
+
+    from main import app
+    from tests.schema_cleanup import purge_dynamic_table
+
+    name = f"cmdup_{uuid.uuid4().hex[:6]}"
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        try:
+            resp = await client.post(
+                "/api/schema/tables",
+                json={
+                    "name": name,
+                    "columns": [
+                        {"name": "order_no", "type": "String", "length": 50, "label": "订单号"},
+                        {"name": "amount", "type": "Numeric", "label": "金额"},
+                    ],
+                },
+            )
+            assert resp.status_code == 201, resp.text
+
+            csv_file = tmp_path / "cmdup.csv"
+            csv_file.write_text("订单号,金额\nK1,10.50\nK1,10.5\nK2,20.00\n", encoding="utf-8")
+            resp = await client.post(
+                "/api/imports",
+                files={"file": ("cmdup.csv", csv_file.read_bytes(), "text/csv")},
+                data={"target_table": name},
+            )
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+
+            # Counter invariant: 新增+更新+跳过+拒绝 == 文件行数
+            assert (
+                body["rows_inserted"] + body["rows_updated"] + body["rows_skipped"] + body["rows_rejected"]
+                == body["total_rows"]
+            )
+            assert body["rows_inserted"] == 2
+            assert body["rows_skipped"] == 1
+            assert body["rows_rejected"] == 0
+
+            rows = (await client.get(f"/api/schema/tables/{name}")).json()["sample_rows"]
+            assert len([r for r in rows if r["order_no"] == "K1"]) == 1
+        finally:
+            await purge_dynamic_table(name)

@@ -15,8 +15,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import DataSource, ImportJob
-from app.services.cleaning import CleaningPipeline
-from app.services.parsers import parse_file
+from app.services.cleaning import CleaningPipeline, CleaningStepReport
+from app.services.raw_cleaning import RawCleanError, parse_with_profile
 from app.services.schema_validator import (
     get_chinese_table_name,
     get_registered_model,
@@ -201,9 +201,15 @@ class ImportService:
         display_filename: str,
     ) -> dict[str, Any]:
         """Run the actual import processing after job creation has been committed."""
-        # Step 1: Parse file
+        # Step 1: Parse file. Raw business-source exports ("non-standard
+        # CSV": bare-LF field newlines, unescaped JSON, trailing tabs/
+        # commas, whole-file column shifts) are re-parsed by the
+        # raw-cleansing profiles when the headers match one; everything
+        # else goes through the standard parser unchanged.
         try:
-            df, raw_headers = parse_file(filepath)
+            df, raw_headers, raw_profile = parse_with_profile(filepath)
+        except RawCleanError as e:
+            raise ImportError(message=str(e), status_code=400) from e
         except ValueError as e:
             raise ImportError(message=str(e), status_code=415) from e
         except Exception as e:
@@ -249,12 +255,27 @@ class ImportService:
                 },
             )
 
-        # Step 3: Run table-specific structural cleaning BEFORE column mapping
+        # Step 3: Run table-specific structural cleaning BEFORE column mapping.
+        # When a raw business-source profile was applied in Step 1, record
+        # it as the leading report step so users see that the raw file was
+        # re-parsed (fields realigned, trailing tabs dropped, …).
         pre_pipeline = CleaningPipeline()
         pre_pipeline.clear_common_steps()
         for rule_fn in get_rules(english_name):
             pre_pipeline.add_table_step(rule_fn)
         df, pre_report = pre_pipeline.run(df)
+        if raw_profile is not None:
+            pre_report.steps.insert(
+                0,
+                CleaningStepReport(
+                    step_name="raw_source_cleanse",
+                    rows_before=len(df),
+                    rows_after=len(df),
+                    rows_dropped=0,
+                    rows_modified=0,
+                    warnings=[f"原始导出文件按「{raw_profile}」规则重新解析（字段对齐/去尾随空白/修复错位）"],
+                ),
+            )
 
         # Step 4: Rename columns from Chinese to English using mapping
         df = self._apply_column_mapping(df, validation.column_mapping, raw_headers)
@@ -573,6 +594,23 @@ class ImportService:
             else:
                 # No upsert key — insert-only mode
                 if has_content_hash:
+                    # Collapse rows that are identical after type coercion
+                    # (e.g. "30.00" vs "30" — the string-level dedup in the
+                    # cleaning pipeline cannot see them). Without this, the
+                    # COUNT below under-counts and rows_inserted credits a
+                    # duplicate twice, while Postgres silently skips the
+                    # second row inside the same INSERT. Last wins; the
+                    # collapsed rows count as skipped (no DB change needed).
+                    seen_hashes: set = set()
+                    deduped_batch = []
+                    for row_data in batch:
+                        h = row_data.get("content_hash")
+                        if h in seen_hashes:
+                            truly_skipped += 1
+                        else:
+                            seen_hashes.add(h)
+                            deduped_batch.append(row_data)
+                    batch = deduped_batch
                     batch_existing = await self._count_existing_hashes(model_class, batch)
                 else:
                     batch_existing = 0

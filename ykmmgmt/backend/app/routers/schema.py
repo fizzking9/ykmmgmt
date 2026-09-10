@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import engine, get_db
 from app.services import schema_manager as sm
 from app.services import schema_validator
-from app.services.parsers import parse_file
+from app.services.raw_cleaning import RawCleanError, parse_with_profile
 
 router = APIRouter(prefix="/api/schema", tags=["schema"])
 
@@ -34,6 +34,11 @@ class ColumnDefinition(BaseModel):
     unique: bool = False
     primary_key: bool = False
     foreign_key: str | None = Field(None, max_length=200, description="外键引用，格式 '表名.列名'")
+    on_delete: str | None = Field(
+        None,
+        max_length=20,
+        description="外键引用动作：CASCADE/RESTRICT/SET NULL/SET DEFAULT（默认 NO ACTION）",
+    )
     label: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=500, description="列描述（可选）")
     default: str | None = Field(None, max_length=200, description="默认值（可选）")
@@ -59,6 +64,9 @@ class ModifyColumnRequest(BaseModel):
     description: str | None = Field(None, max_length=500, description="列描述，传空串清除")
     default: str | None = Field(None, max_length=200, description="默认值，传空串清除")
     foreign_key: str | None = Field(None, max_length=200, description="外键 '表名.列名'，传空串移除")
+    on_delete: str | None = Field(
+        None, max_length=20, description="外键引用动作，需配合外键使用；传空串恢复默认 NO ACTION"
+    )
 
 
 class TableSettingsRequest(BaseModel):
@@ -97,6 +105,7 @@ def _column_def_dict(col: ColumnDefinition) -> dict[str, Any]:
         "unique": False if pk else col.unique,
         "primary_key": pk,
         "foreign_key": (col.foreign_key or "").strip() or None,
+        "on_delete": sm.normalize_on_delete(col.on_delete),
         "label": col.label or col.name,
         "description": (col.description or "").strip() or None,
         "default": None if pk else (col.default or "").strip() or None,
@@ -248,7 +257,13 @@ async def infer_from_csv(file: UploadFile = File(...)):
 
     try:
         try:
-            df, raw_headers = parse_file(tmp_path)
+            # Raw business-source exports ("non-standard CSV") are
+            # re-parsed by the raw-cleansing profiles when the headers
+            # match one, so the inferred schema reflects the cleansed
+            # canonical columns instead of the misaligned raw ones.
+            df, raw_headers, _profile = parse_with_profile(tmp_path)
+        except RawCleanError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except ValueError as e:
             raise HTTPException(status_code=415, detail=str(e)) from e
         except Exception as e:
@@ -387,6 +402,7 @@ async def modify_column(
     old = next(c for c in sm.extract_column_definitions(model) if c["name"] == column_name)
     is_pk = bool(old.get("primary_key"))
     old_fk = (old.get("foreign_key") or "").strip()
+    old_ondelete = sm.normalize_on_delete(old.get("on_delete"))
     old_unique = bool(old.get("unique"))
 
     # ── Resolve the requested final state ──────────────────────────────
@@ -413,7 +429,7 @@ async def modify_column(
     if "unique" in sent and body.unique and is_pk:
         raise HTTPException(status_code=400, detail="主键列已隐式唯一，无需设置唯一约束")
 
-    # Final FK state: unchanged / set / removed
+    # Final FK state: unchanged / set / removed (incl. referential action)
     fk_changed = False
     new_fk = old_fk
     if "foreign_key" in sent:
@@ -421,6 +437,20 @@ async def modify_column(
         if candidate != old_fk:
             fk_changed = True
             new_fk = candidate
+
+    # Referential action: an action change forces the FK to be dropped and
+    # re-created, so it participates in fk_changed like a FK target change.
+    new_ondelete = old_ondelete
+    if "on_delete" in sent:
+        candidate_action = sm.normalize_on_delete(body.on_delete)
+        if candidate_action != old_ondelete:
+            fk_changed = True
+            new_ondelete = candidate_action
+        if candidate_action and not new_fk:
+            raise HTTPException(status_code=400, detail="设置引用动作需要先设置外键")
+    if not new_fk:
+        # A removed FK carries no referential action
+        new_ondelete = None
 
     label_changed = "label" in sent and body.label is not None and body.label.strip() != old["label"]
     new_label = body.label.strip() if label_changed else old["label"]
@@ -460,6 +490,12 @@ async def modify_column(
             sm.validate_foreign_key(new_name, new_fk)
         except sm.SchemaManagerError as e:
             raise _raise_error(e) from e
+    if new_fk and new_ondelete:
+        final_nullable = bool(body.nullable) if nullable_changed else bool(old["nullable"])
+        try:
+            sm.validate_on_delete(new_name, new_ondelete, final_nullable)
+        except sm.SchemaManagerError as e:
+            raise _raise_error(e) from e
 
     warning: str | None = None
     if type_changed and sm.is_lossy_cast(old["type"], new_type):
@@ -472,7 +508,7 @@ async def modify_column(
     # FK must be dropped before type change / rename / removal
     if old_fk and (fk_changed or type_changed or new_name != column_name):
         upgrade.append(sm.drop_fk_ops(name, column_name))
-        downgrade.append(sm.create_fk_ops(name, column_name, old_fk))
+        downgrade.append(sm.create_fk_ops(name, column_name, old_fk, ondelete=old_ondelete))
 
     # Unique constraint: drop on removal or rename (re-created under the
     # new column name afterwards)
@@ -520,7 +556,7 @@ async def modify_column(
 
     # Recreate / create FK on the (possibly renamed) column
     if new_fk and (fk_changed or type_changed or new_name != column_name):
-        upgrade.append(sm.create_fk_ops(name, new_name, new_fk))
+        upgrade.append(sm.create_fk_ops(name, new_name, new_fk, ondelete=new_ondelete))
         if not fk_changed:
             downgrade.append(sm.drop_fk_ops(name, new_name))
 
