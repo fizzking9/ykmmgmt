@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useAuth } from "@/contexts/AuthContext";
+import { DeviceAnalysisProvider } from "@/contexts/DeviceAnalysisContext";
 import { Loader2 } from "lucide-react";
 import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
@@ -90,7 +91,9 @@ export default function App() {
         <Route
           element={
             <RequireAuth>
-              <AppLayout />
+              <DeviceAnalysisProvider>
+                <AppLayout />
+              </DeviceAnalysisProvider>
             </RequireAuth>
           }
         >

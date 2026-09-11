@@ -1,11 +1,13 @@
 import { Outlet } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { Menu, ScanSearch } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useDeviceAnalysisContext } from "@/contexts/DeviceAnalysisContext";
 import { Sidebar } from "./Sidebar";
 import { useState } from "react";
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { openDeviceAnalysis } = useDeviceAnalysisContext();
 
   return (
     <div className="flex min-h-dvh">
@@ -34,7 +36,18 @@ export function AppLayout() {
 
       {/* Main content */}
       <main id="main" className="flex-1 overflow-auto">
-        <div className="container mx-auto p-6 pt-14 md:pt-6">
+        {/* Global top bar — hosts the 设备分析 entry tag */}
+        <header className="sticky top-0 z-30 flex h-12 items-center justify-start gap-2 border-b bg-background/95 pr-4 pl-14 backdrop-blur print:hidden md:pl-4">
+          <button
+            type="button"
+            onClick={() => openDeviceAnalysis()}
+            className="touch-manipulation inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ScanSearch className="h-3.5 w-3.5" />
+            设备分析
+          </button>
+        </header>
+        <div className="container mx-auto p-6">
           <Outlet />
         </div>
       </main>

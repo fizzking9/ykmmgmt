@@ -10,6 +10,8 @@ from app.core.database import engine, get_db
 from app.core.security import get_current_user, require_admin
 from app.routers.auth import router as auth_router
 from app.routers.dashboards import router as dashboards_router
+from app.routers.device_analysis import router as device_analysis_router
+from app.routers.home import router as home_router
 from app.routers.imports import router as imports_router
 from app.routers.schema import router as schema_router
 from app.routers.tables import router as tables_router
@@ -28,6 +30,8 @@ app = FastAPI(title="YKMMgmt", version="0.1.0")
 app.include_router(auth_router)
 app.include_router(imports_router, dependencies=[Depends(get_current_user)])
 app.include_router(tables_router, dependencies=[Depends(get_current_user)])
+app.include_router(home_router, dependencies=[Depends(get_current_user)])
+app.include_router(device_analysis_router, dependencies=[Depends(get_current_user)])
 # All schema management is admin-only (reads included — the schema
 # surface itself is an administrative concern)
 app.include_router(schema_router, dependencies=[Depends(require_admin)])
