@@ -9,8 +9,6 @@ export interface SchemaTableInfo {
   chinese_name: string;
   column_count: number;
   row_count: number;
-  read_only: boolean;
-  dynamic: boolean;
 }
 
 export interface SchemaColumnDetail {
@@ -31,8 +29,6 @@ export interface SchemaColumnDetail {
 export interface SchemaTableDetail {
   name: string;
   chinese_name: string;
-  read_only: boolean;
-  dynamic: boolean;
   upsert_key: string[];
   dedup_enabled: boolean;
   columns: SchemaColumnDetail[];

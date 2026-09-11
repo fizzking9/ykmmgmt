@@ -959,7 +959,7 @@ def _unique_column_names(model: type) -> set[str]:
 
 
 async def list_tables_info(db: AsyncSession) -> list[dict[str, Any]]:
-    """All registered tables with names, counts, and read-only flags."""
+    """All registered tables (every one of them is user-created and editable)."""
     tables: list[dict[str, Any]] = []
     for name in schema_validator.get_registered_tables():
         model = schema_validator.get_registered_model(name)
@@ -974,8 +974,6 @@ async def list_tables_info(db: AsyncSession) -> list[dict[str, Any]]:
                 "chinese_name": schema_validator.get_chinese_table_name(name),
                 "column_count": column_count,
                 "row_count": result.scalar() or 0,
-                "read_only": False,
-                "dynamic": name in _DYNAMIC_TABLES,
             }
         )
     return tables
@@ -1023,8 +1021,6 @@ async def table_detail(db: AsyncSession, name: str) -> dict[str, Any]:
     return {
         "name": name,
         "chinese_name": schema_validator.get_chinese_table_name(name),
-        "read_only": False,
-        "dynamic": name in _DYNAMIC_TABLES,
         "upsert_key": (_TABLE_SETTINGS.get(name) or {}).get("upsert_key", []),
         "dedup_enabled": (_TABLE_SETTINGS.get(name) or {}).get("dedup_enabled", True),
         "columns": columns,

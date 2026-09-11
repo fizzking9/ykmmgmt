@@ -65,24 +65,15 @@ export default function SchemaTableDetailPage() {
             {detail.name}
           </span>
         </h1>
-        {detail.read_only ? (
-          <Badge variant="secondary">预置业务表（仅可查看）</Badge>
-        ) : (
-          <Badge>自建数据表</Badge>
-        )}
         <span className="flex-1" />
-        {!detail.read_only && (
-          <>
-            <Button variant="outline" onClick={() => setEditOpen(true)}>
-              <Pencil className="h-4 w-4" />
-              编辑表结构
-            </Button>
-            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="h-4 w-4" />
-              删除数据表
-            </Button>
-          </>
-        )}
+        <Button variant="outline" onClick={() => setEditOpen(true)}>
+          <Pencil className="h-4 w-4" />
+          编辑表结构
+        </Button>
+        <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+          <Trash2 className="h-4 w-4" />
+          删除数据表
+        </Button>
       </div>
 
       <Card>
@@ -178,28 +169,24 @@ export default function SchemaTableDetailPage() {
         </CardContent>
       </Card>
 
-      {!detail.read_only && (
-        <>
-          {editOpen && (
-            <EditTableDialog
-              tableName={detail.name}
-              onClose={() => setEditOpen(false)}
-              onRenamed={(newName) => {
-                setEditOpen(false);
-                if (newName !== detail.name) {
-                  navigate(`/schema/tables/${newName}`);
-                }
-              }}
-            />
-          )}
-          <DeleteTableDialog
-            tableName={deleteOpen ? detail.name : null}
-            chineseName={detail.chinese_name}
-            onClose={() => setDeleteOpen(false)}
-            onDeleted={() => navigate("/schema")}
-          />
-        </>
+      {editOpen && (
+        <EditTableDialog
+          tableName={detail.name}
+          onClose={() => setEditOpen(false)}
+          onRenamed={(newName) => {
+            setEditOpen(false);
+            if (newName !== detail.name) {
+              navigate(`/schema/tables/${newName}`);
+            }
+          }}
+        />
       )}
+      <DeleteTableDialog
+        tableName={deleteOpen ? detail.name : null}
+        chineseName={detail.chinese_name}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => navigate("/schema")}
+      />
     </div>
   );
 }

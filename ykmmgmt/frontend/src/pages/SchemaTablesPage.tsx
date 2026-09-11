@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,7 +55,6 @@ export default function SchemaTablesPage() {
                   <TableHead>英文名称</TableHead>
                   <TableHead>列数</TableHead>
                   <TableHead>行数</TableHead>
-                  <TableHead>类型</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -67,13 +65,6 @@ export default function SchemaTablesPage() {
                     <TableCell className="font-mono text-muted-foreground">{t.name}</TableCell>
                     <TableCell>{t.column_count}</TableCell>
                     <TableCell>{t.row_count}</TableCell>
-                    <TableCell>
-                      {t.read_only ? (
-                        <Badge variant="secondary">预置业务表</Badge>
-                      ) : (
-                        <Badge>自建数据表</Badge>
-                      )}
-                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -85,28 +76,24 @@ export default function SchemaTablesPage() {
                           <Eye className="h-3.5 w-3.5" />
                           查看
                         </Button>
-                        {!t.read_only && (
-                          <>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              title="编辑"
-                              onClick={() => navigate(`/schema/tables/${t.name}?edit=1`)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              编辑
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              title="删除"
-                              onClick={() => setDeleting(t)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              删除
-                            </Button>
-                          </>
-                        )}
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          title="编辑"
+                          onClick={() => navigate(`/schema/tables/${t.name}?edit=1`)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          编辑
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          title="删除"
+                          onClick={() => setDeleting(t)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          删除
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

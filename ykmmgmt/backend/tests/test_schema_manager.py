@@ -42,8 +42,8 @@ async def _create_table(client: AsyncClient, name: str, columns=None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_schema_tables_lists_dynamic_tables_with_flags():
-    """Dynamically created tables are listed with correct flags and counts."""
+async def test_schema_tables_lists_dynamic_tables_with_counts():
+    """Dynamically created tables are listed with their names and counts."""
     name = _unique("list")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -55,12 +55,12 @@ async def test_schema_tables_lists_dynamic_tables_with_flags():
 
             assert name in tables
             info = tables[name]
-            # The system ships with no built-in tables — everything is editable
-            assert info["read_only"] is False
-            assert info["dynamic"] is True
             assert info["chinese_name"] == "测试表"
             assert "column_count" in info
             assert "row_count" in info
+            # No vestigial per-table type flags are exposed anymore
+            assert "read_only" not in info
+            assert "dynamic" not in info
         finally:
             await purge_dynamic_table(name)
 
@@ -98,7 +98,7 @@ async def test_table_detail_includes_columns_and_sample():
             assert resp.status_code == 200
             detail = resp.json()
             assert detail["name"] == name
-            assert detail["read_only"] is False
+            assert "read_only" not in detail
             col_names = [c["name"] for c in detail["columns"]]
             assert "title" in col_names
             # Keyless tables dedup via content_hash (dedup defaults to on)
@@ -464,9 +464,10 @@ async def test_system_starts_with_zero_builtin_business_tables():
 
     A fresh database yields only system tables: the ORM metadata defines
     nothing else, the validation registry holds no legacy names, and the
-    Schema Manager table list exposes no read-only (preset) entries.
+    Schema Manager table list holds nothing but user-created dynamic tables.
     """
     from app.core.database import Base
+    from app.services.schema_manager import get_dynamic_table_names
     from app.services.schema_validator import get_registered_tables
 
     legacy = {"refund_orders", "service_refund_work_orders", "wallet_withdrawals"}
@@ -496,8 +497,9 @@ async def test_system_starts_with_zero_builtin_business_tables():
         assert resp.status_code == 200
         tables = resp.json()
         assert not any(t["name"] in legacy for t in tables)
-        # Every listed table is a user-created, editable one
-        assert all(t["read_only"] is False and t["dynamic"] is True for t in tables)
+        # Everything listed is a user-created dynamic table — no type flag needed
+        dynamic_names = set(get_dynamic_table_names())
+        assert all(t["name"] in dynamic_names for t in tables)
 
 
 # ── Primary key & foreign key support ───────────────────────────────────────

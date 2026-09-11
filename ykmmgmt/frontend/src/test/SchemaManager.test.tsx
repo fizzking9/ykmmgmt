@@ -23,8 +23,6 @@ const TABLES = [
     chinese_name: "客户订单",
     column_count: 4,
     row_count: 3,
-    read_only: false,
-    dynamic: true,
   },
 ];
 
@@ -79,8 +77,6 @@ vi.mock("@/hooks/useSchema", async () => {
       data: {
         name: "customer_orders",
         chinese_name: "客户订单",
-        read_only: false,
-        dynamic: true,
         upsert_key: [],
         dedup_enabled: true,
         columns: [
@@ -162,7 +158,7 @@ beforeEach(() => {
 // ── Table list ─────────────────────────────────────────────────────────────
 
 describe("数据表列表页", () => {
-  it("渲染所有自建数据表，提供查看/编辑/删除操作", () => {
+  it("渲染所有数据表，提供查看/编辑/删除操作", () => {
     renderWithProviders(
       <Routes>
         <Route path="/schema" element={<SchemaTablesPage />} />
@@ -170,15 +166,14 @@ describe("数据表列表页", () => {
     );
 
     expect(screen.getByText("客户订单")).toBeInTheDocument();
-    expect(screen.getByText("自建数据表")).toBeInTheDocument();
-    // The system ships with no preset business tables
-    expect(screen.queryByText("预置业务表")).not.toBeInTheDocument();
+    // Every listed table is user-created — no per-table type column anymore
+    expect(screen.queryByText("类型")).not.toBeInTheDocument();
+    expect(screen.queryByText("自建数据表")).not.toBeInTheDocument();
 
-    // Dynamic table: all actions visible
-    const dynamicRow = screen.getByText("客户订单").closest("tr")!;
-    expect(dynamicRow.textContent).toContain("查看");
-    expect(dynamicRow.textContent).toContain("编辑");
-    expect(dynamicRow.textContent).toContain("删除");
+    const row = screen.getByText("客户订单").closest("tr")!;
+    expect(row.textContent).toContain("查看");
+    expect(row.textContent).toContain("编辑");
+    expect(row.textContent).toContain("删除");
   });
 });
 
@@ -446,8 +441,8 @@ describe("编辑表结构对话框", () => {
     renderWithProviders(<EditTableDialog tableName="customer_orders" onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText("列 title 的外键目标表"), {
-      target: { value: "departments" } },
-    );
+      target: { value: "departments" },
+    });
     // The referential-action select appears once a FK target is chosen
     const actionSelect = screen.getByLabelText("列 title 的外键引用动作");
     expect(actionSelect).toHaveValue("");

@@ -129,7 +129,7 @@ async def _resync(db: AsyncSession) -> None:
 
 @router.get("/tables")
 async def list_schema_tables(db: AsyncSession = Depends(get_db)):
-    """List every table with names, counts, and read-only flags."""
+    """List every table with its names and column/row counts."""
     return await sm.list_tables_info(db)
 
 
