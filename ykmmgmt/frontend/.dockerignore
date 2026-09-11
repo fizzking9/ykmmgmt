@@ -3,3 +3,5 @@ node_modules/
 dist/
 .vite/
 *.log
+# A host-built cache would make `tsc -b` skip type-checking inside the image
+*.tsbuildinfo

@@ -10,6 +10,8 @@ venv/
 # Node
 node_modules/
 dist/
+# TypeScript incremental-build cache (written by `tsc -b`; machine-local, never reviewed)
+*.tsbuildinfo
 
 # IDE
 .vscode/
