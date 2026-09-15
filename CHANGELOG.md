@@ -4,6 +4,10 @@ All notable changes to YKMMgmt are documented in this file.
 
 ---
 
+## 2026-09-15
+
+- **生产环境迁移独立主机:** The system no longer runs on the developer's own computer — it now lives on a dedicated machine on the office network (192.168.10.25), so closing a laptop or restarting a workstation no longer takes the service down. All business data was moved over intact (accounts, tables, import history), and the public address http://43.108.32.160 stays exactly the same. Staff on the office network can additionally open it directly at http://192.168.10.25:8080 without going through the internet. Releasing new versions is now a single command that delivers the update to that machine, and the automatic daily data backup continues to land in the same place as before.
+
 ## 2026-09-11
 
 - **经营看板首页:** Signing in now lands on a business dashboard that answers "how is today going?" at a glance, for any date chosen. Five headline numbers sit across the top — 接待数 (distinct devices served), 会话数 (conversations handled), 退款笔数, 退款金额 and 投诉数 — each showing how it moved against the previous day. Because all five are load indicators, an increase reads red and a decrease reads green, so a good day is obvious without any mental arithmetic. 前一天 / 后一天 arrows step through dates one day at a time, the heading switches between 今日看板 and 历史看板, and a 实时数据 marker with an updated-at stamp shows how fresh today's figures are. Below them 实时趋势 draws every hour of the day as lines: the 接待 and 投诉 tabs combine freely in one chart, and the legend matches the lines in both order and color (接待数 green, 会话数 blue, 投诉数 red). The board is deliberately fixed rather than configurable, and is built so new indicators surface in the cards, the chart and the legend without further interface work. Checked against the real business data for one day: 1,577 接待 / 1,741 会话 / 577 退款笔 / ¥31,012.64 退款金额 / 436 投诉.

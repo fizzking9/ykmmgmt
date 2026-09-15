@@ -1,11 +1,11 @@
 # Release a new version end-to-end in one command — starting from push.
 #
 # Covers the CI/CD workflow after the work is already committed on main:
-#   1. Preflight checks (Docker reachable, prod env file present)
+#   1. Preflight checks (prod env file present, on main)
 #   2. Push main  ->  triggers GitHub Actions: CI, then Deploy (build & push images)
 #   3. Wait for both workflows to succeed (GitHub API, no auth needed)
-#   4. Pull the fresh images and restart the local production stack (deploy.ps1)
-#   5. Health check (frontend :8080 + backend /api/health)
+#   4. Deploy over SSH to the prod host (deploy.ps1: sync configs, pull, restart)
+#   5. Health check (cloud URL http://43.108.32.160, end-to-end through the tunnel)
 #
 # Usage:
 #   .\scripts\release.ps1              # push main, watch CI, deploy, verify
@@ -15,9 +15,9 @@
 # Notes:
 #   - Commit your work (and update CHANGELOG.md / specs) BEFORE running —
 #     this script only pushes what is already committed on main.
-#   - Requires: git, Docker Desktop running, deploy/.env.prod configured, and
-#     the repo's GitHub visibility public (unauthenticated API calls are used
-#     to watch workflow runs).
+#   - Requires: git, SSH key access to the prod host (srx@192.168.10.25),
+#     deploy/.env.prod configured, and the repo's GitHub visibility public
+#     (unauthenticated API calls are used to watch workflow runs).
 
 param(
     [switch]$Yes,
@@ -27,7 +27,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path "$PSScriptRoot\..").Path
-$ProdCompose = Join-Path $Root "docker-compose.prod.yml"
 $ProdEnv = Join-Path $Root "deploy\.env.prod"
 
 # git writes progress ("From https://...", "To https://...") to stderr; with
@@ -48,10 +47,6 @@ function Confirm-Action([string]$Question) {
 # ── Preflight ────────────────────────────────────────────────────────────────
 Write-Step "[1/5] Preflight"
 
-docker info *> $null
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Docker is not reachable - start Docker Desktop first."
-}
 if (-not (Test-Path $ProdEnv)) {
     Write-Error "Missing $ProdEnv - copy deploy/.env.prod.example and fill it in."
 }
@@ -144,8 +139,8 @@ function Wait-WorkflowRun {
 Wait-WorkflowRun -WorkflowFile "ci.yml" -Label "CI (tests)"
 Wait-WorkflowRun -WorkflowFile "deploy.yml" -Label "Deploy (build & push images)"
 
-# ── Pull and restart the local production stack ─────────────────────────────
-Write-Step "[4/5] Deploy (pull images + restart stack)"
+# ── Deploy to the prod host over SSH ─────────────────────────────────────────
+Write-Step "[4/5] Deploy (sync configs + pull images + restart stack on prod host)"
 
 & (Join-Path $PSScriptRoot "deploy.ps1")
 if ($LASTEXITCODE -ne 0) { Write-Error "deploy.ps1 failed - check the output above." }
@@ -166,14 +161,15 @@ function Wait-Healthy {
         Write-Info "$Label not ready yet (attempt $i/$Attempts)..."
         Start-Sleep -Seconds 4
     }
-    Write-Error "$Label did not become healthy - run: docker compose -f `"$ProdCompose`" --env-file `"$ProdEnv`" ps"
+    Write-Error "$Label did not become healthy - check: ssh srx@192.168.10.25 'cd ~/ykmmgmt && docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod ps'"
 }
 
-Wait-Healthy -Url "http://localhost:8080/api/health" -Label "Backend"
-Wait-Healthy -Url "http://localhost:8080/" -Label "Frontend"
+Wait-Healthy -Url "http://43.108.32.160/api/health" -Label "Backend (via cloud)"
+Wait-Healthy -Url "http://43.108.32.160/" -Label "Frontend (via cloud)"
 
 # ── Done ────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "Release $ShortSha is live." -ForegroundColor Cyan
-Write-Host "  Local   http://localhost:8080"
+Write-Host "  Cloud   http://43.108.32.160"
+Write-Host "  LAN     http://192.168.10.25:8080"
 Write-Host "  Actions https://github.com/$RepoSlug/actions"

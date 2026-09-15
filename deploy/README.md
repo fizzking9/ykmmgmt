@@ -1,34 +1,74 @@
 # Deployment — Public Access via Alibaba Cloud
 
-The whole application (backend, frontend, PostgreSQL) runs in Docker on the
-local machine. The Alibaba Cloud ECS server is a **stateless public entry
-point only**: its Nginx reverse-proxies traffic through an frp tunnel back
-to the local machine.
+The whole application (backend, frontend, PostgreSQL, MCP server) runs in
+Docker on the **LAN prod host** (`srx@192.168.10.25`, Ubuntu 24.04). The
+Alibaba Cloud ECS server is a **stateless public entry point only**: its
+Nginx reverse-proxies traffic through an frp tunnel back to the prod host.
 
 > The cloud server is configured **once** — it never changes with app
-> releases. Releasing a new version is purely a local pull + restart
-> (see `scripts/deploy.ps1` in the repo root README).
+> releases. Releasing a new version is purely a pull + restart on the prod
+> host, driven over SSH by `scripts/deploy.ps1` from the dev machine.
 
 ```
 Browser ──HTTP──> Alibaba Cloud ECS
                     │ Nginx :80  ──> 127.0.0.1:7001 (frp tunnel)
                     │           └─> /mcp ──> 127.0.0.1:7002 (frp tunnel, MCP)
-                    │ frps :7000  <── tunnel ── frpc (local compose stack)
+                    │ frps :7000  <── tunnel ── frpc (prod host compose stack)
                     ▼
-                 Local machine (Docker Compose)
+                 Prod host 192.168.10.25 (Docker Compose, Ubuntu)
                     │ frontend (Nginx :80, published on host as :8080)
                     │   └─ proxies /api ──> backend :8000
                     │ backend ──> db (postgres:16)
                     │ mcp_server :8001 (streamable HTTP for AI agents)
 ```
 
+LAN users can also reach the app directly at `http://192.168.10.25:8080`
+(only port 8080 is published on the prod host; everything else stays inside
+the compose network).
+
 ## Prerequisites
 
-- An Alibaba Cloud ECS instance (any lightweight Linux, e.g. Ubuntu 22.04 / Alibaba Cloud Linux 3) with a public IP
-- SSH access to the server
-- One-time on the local machine: `deploy/.env.prod` and `deploy/frpc.toml` created from their `.example` files
+- The prod host (`192.168.10.25`) with Ubuntu 24.04 and the `srx` account
+- SSH key auth from the dev machine (no password prompts during deploys)
+- One-time: `deploy/.env.prod` and `deploy/frpc.toml` created from their
+  `.example` files on the dev machine (they are pushed to the host by the
+  deploy script)
 
-## Step 1 — Cloud server: install frps
+## Step 1 — Prod host: install Docker
+
+SSH into the host, then install Docker Engine + the Compose plugin from the
+Ubuntu repos, and allow the deploy user to talk to the daemon:
+
+```bash
+sudo apt update && sudo apt install -y docker.io docker-compose-v2
+sudo usermod -aG docker srx   # log out/in once for the group to apply
+```
+
+Docker Hub is unreachable from this network, so route Hub pulls (e.g.
+`postgres:16`) through a mirror in `/etc/docker/daemon.json`:
+
+```json
+{ "registry-mirrors": ["https://docker.m.daocloud.io"] }
+```
+
+GHCR images (`ghcr.io/fizzking9/...`) are public and pull directly — no
+registry login needed on the host.
+
+```bash
+sudo systemctl enable --now docker
+```
+
+## Step 2 — Dev machine: SSH key access
+
+```powershell
+# If you have no key yet:
+ssh-keygen -t ed25519
+# Install it on the prod host (one-time, password prompt):
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh srx@192.168.10.25 "cat >> ~/.ssh/authorized_keys"
+ssh srx@192.168.10.25 "echo ok"   # should print "ok" without a prompt
+```
+
+## Step 3 — Cloud server: install frps
 
 SSH into the server, then:
 
@@ -73,7 +113,7 @@ sudo systemctl enable --now frps
 sudo systemctl status frps   # should be active (running)
 ```
 
-## Step 2 — Cloud server: Nginx reverse proxy
+## Step 4 — Cloud server: Nginx reverse proxy
 
 ```bash
 sudo apt update && sudo apt install -y nginx   # (or yum install -y nginx)
@@ -119,7 +159,7 @@ agents reach the MCP server at `http://<CLOUD_SERVER_IP>/mcp`):
     }
 ```
 
-## Step 3 — Alibaba Cloud console: security group
+## Step 5 — Alibaba Cloud console: security group
 
 Open **only** these inbound ports on the ECS instance's security group:
 
@@ -127,43 +167,48 @@ Open **only** these inbound ports on the ECS instance's security group:
 |------|---------|--------|
 | 22   | SSH administration | your IP / restricted |
 | 80   | HTTP public entry | 0.0.0.0/0 |
-| 7000 | frps bind (tunnel control) | your IP / restricted if possible |
+| 7000 | frps bind (tunnel control) | the prod host's IP / restricted if possible |
 
 Do **not** open 7001 or 7002 — they only need to be reachable from the
 server itself (Nginx proxies to 127.0.0.1:7001 / 127.0.0.1:7002). frp's
 `remotePort` traffic arrives over the 7000 control connection.
 
-## Step 4 — Local machine: start the stack
+## Step 6 — Deploy
+
+Everything is driven from the dev machine — the deploy script syncs the
+compose file and deploy configs to the prod host, pulls the latest images
+there, restarts the stack, and health-checks it:
 
 ```powershell
-# One-time: copy and fill in the configs
-copy deploy\.env.prod.example deploy\.env.prod     # then edit
-copy deploy\frpc.toml.example deploy\frpc.toml     # then edit (server IP + token)
-
-# Start (frpc is part of the compose stack)
-docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
+.\scripts\deploy.ps1
 ```
 
-Verify the tunnel:
+Verify the tunnel (from the dev machine):
 
 ```powershell
-docker logs ykmmgmt-prod-frpc    # expect: "login to server success"
-                                 #         "start proxy success"
+ssh srx@192.168.10.25 "docker logs ykmmgmt-prod-frpc"   # expect: "login to server success"
+                                                         #         "start proxy success"
 ```
 
-## Step 5 — End-to-end check
+Only one machine may hold the tunnel at a time — frps rejects duplicate
+proxy names (`ykmmgmt-web` / `ykmmgmt-mcp`). If a second instance logs
+`proxy name already used`, make sure no other frpc (e.g. an old stack
+elsewhere) is still running.
 
-Browse to `http://<CLOUD_SERVER_IP>/` — you should see the YKMMgmt login page.
-Log in, upload a small CSV, and confirm it appears in the Data Browser.
+## Step 7 — End-to-end check
 
-## Step 6 — MCP endpoint for external AI agents
+Browse to `http://<CLOUD_SERVER_IP>/` — you should see the YKMMgmt login
+page. Log in, upload a small CSV, and confirm it appears in the Data
+Browser.
+
+## Step 8 — MCP endpoint for external AI agents
 
 1. Create a service account (a regular user, e.g. an admin named `svc-mcp`)
    via the app's user management UI.
 2. Fill in the MCP section of `deploy/.env.prod`
    (`YKM_SERVICE_USERNAME`, `YKM_SERVICE_PASSWORD`, `YKM_MCP_API_KEY` —
-   see `deploy/.env.prod.example`), then restart the stack so the
-   `mcp_server` service picks up the credentials.
+   see `deploy/.env.prod.example`), then run `.\scripts\deploy.ps1` again
+   so the `mcp_server` service picks up the credentials.
 3. Point an MCP client (Claude Desktop / Inspector, streamable HTTP
    transport) at `http://<CLOUD_SERVER_IP>/mcp` with header
    `Authorization: Bearer <YKM_MCP_API_KEY>` and call `export_visualizations`.
@@ -173,20 +218,27 @@ Log in, upload a small CSV, and confirm it appears in the Data Browser.
      seconds (default 24 h) and files are pruned afterwards.
    - Set `YKM_MCP_PUBLIC_URL` (e.g. `http://<CLOUD_SERVER_IP>/mcp`) so
      links are absolute; files wait in `YKM_MCP_FILES_DIR`
-     (`/exports`, bind-mounted to `./mcp_exports` on the host).
+     (`/exports`, bind-mounted to `~/ykmmgmt/mcp_exports` on the prod host).
 
 Without the API key every request to `/mcp` gets a 401.
 
 ## Troubleshooting
 
 - **frpc logs "connect to server error"** — check the security group allows
-  port 7000 inbound, and that `<FRP_TOKEN>` matches on both sides.
+  port 7000 inbound from the prod host, and that `<FRP_TOKEN>` matches on
+  both sides.
+- **frpc logs "proxy name already used"** — another frpc still holds the
+  tunnel (e.g. an old stack on a different machine); stop it there first.
 - **Browser gets 502 from the cloud Nginx** — the tunnel is down: check
-  `docker logs ykmmgmt-prod-frpc` locally and `sudo journalctl -u frps` on
-  the server.
-- **App unreachable after a local reboot** — the compose stack uses
-  `restart: unless-stopped`; make sure Docker Desktop is configured to start
-  on boot (Settings → General → Start Docker Desktop when you sign in).
+  `ssh srx@192.168.10.25 "docker logs ykmmgmt-prod-frpc"` and
+  `sudo journalctl -u frps` on the server.
+- **App unreachable after a prod host reboot** — the compose stack uses
+  `restart: unless-stopped` and Docker is enabled via systemd
+  (`systemctl is-enabled docker`), so it comes back on its own.
+- **postgres crash-loops with "could not open log file ... Permission
+  denied"** — the bind-mounted `~/ykmmgmt/logs/db` must be writable by uid
+  999 (the postgres user in the container):
+  `sudo chown -R 999:999 ~/ykmmgmt/logs/db`.
 - **Long uploads fail with 413** — `client_max_body_size` is set to 50m in
   both Nginx configs; raise it in both places if larger files are needed.
 
@@ -195,5 +247,5 @@ Without the API key every request to `/mcp` gets a 401.
 When a domain is ready: point it at the ECS IP, replace the port-80 server
 block with an HTTPS one (`listen 443 ssl` + Let's Encrypt / Alibaba SSL cert),
 and set `COOKIE_SECURE=true` in `deploy/.env.prod` so auth cookies are only
-sent over HTTPS. Nothing else changes — the tunnel and the local stack stay
-exactly as they are.
+sent over HTTPS. Nothing else changes — the tunnel and the prod host stack
+stay exactly as they are.

@@ -1,12 +1,16 @@
 # Backup the production PostgreSQL database (custom-format dump), prune old
 # backups, and print restore instructions.
 #
+# The prod DB runs on the prod host (srx@192.168.10.25); the dump is taken
+# there over SSH and copied back into backups/ on this machine.
+#
 # Usage:  .\scripts\backup-db.ps1 [-KeepDays 30]
-# Requires: Docker Desktop running and the ykmmgmt-prod-db container up.
+# Requires: SSH key access to the prod host and the ykmmgmt-prod-db container up.
 #
 # Schedule daily via Windows Task Scheduler (see README: "Backups").
 
 param(
+    [string]$RemoteHost = "srx@192.168.10.25",
     [string]$Container = "ykmmgmt-prod-db",
     [string]$User = "ykmmgmt",
     [string]$Db = "ykmmgmt",
@@ -23,15 +27,20 @@ if (-not (Test-Path $OutDir)) {
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $containerPath = "/tmp/ykmmgmt-$stamp.dump"
 
-Write-Host "Dumping database to $containerPath ..." -ForegroundColor Cyan
-docker exec $Container pg_dump -U $User -d $Db -Fc -f $containerPath
+Write-Host "Dumping database on ${RemoteHost} to $containerPath ..." -ForegroundColor Cyan
+ssh $RemoteHost "docker exec $Container pg_dump -U $User -d $Db -Fc -f $containerPath"
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "pg_dump failed — is the $Container container running?"
+    Write-Error "pg_dump failed on the prod host - is the $Container container running?"
 }
 
+# Copy the dump out of the container onto the prod host's /tmp, then here
+ssh $RemoteHost "docker cp ${Container}:$containerPath /tmp/ykmmgmt-$stamp.dump && docker exec $Container rm $containerPath"
 $localPath = Join-Path $OutDir "ykmmgmt-$stamp.dump"
-docker cp "${Container}:$containerPath" $localPath
-docker exec $Container rm $containerPath
+scp "${RemoteHost}:/tmp/ykmmgmt-$stamp.dump" $localPath
+ssh $RemoteHost "rm /tmp/ykmmgmt-$stamp.dump"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "scp of the dump failed."
+}
 
 $size = "{0:N1}" -f ((Get-Item $localPath).Length / 1MB)
 Write-Host "Backup written: $localPath ($size MB)" -ForegroundColor Green

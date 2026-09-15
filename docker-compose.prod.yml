@@ -1,9 +1,9 @@
-# Production stack — runs on the local machine.
+# Production stack — runs on the LAN prod host (srx@192.168.10.25, Ubuntu).
 #
 #   docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
 #
-# Image names come from deploy/.env.prod (set by scripts/deploy.ps1), with a
-# `build:` fallback so the stack can also run from locally built images
+# Image names come from deploy/.env.prod (synced there by scripts/deploy.ps1),
+# with a `build:` fallback so the stack can also run from locally built images
 # during development of the deployment itself.
 #
 # Only the `frontend` port is published to the host; `frpc` carries it to
@@ -15,7 +15,7 @@
 name: ykmmgmt-prod
 
 # Rotated JSON logs per container — view with `docker logs <container>`,
-# inspect raw files under \\\\wsl$\docker-desktop-data (see README).
+# inspect raw files under ~/ykmmgmt/logs on the prod host (see README).
 x-logging: &default-logging
   driver: json-file
   options:
