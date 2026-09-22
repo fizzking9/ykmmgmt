@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { Menu, ScanSearch } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useDeviceAnalysisContext } from "@/contexts/DeviceAnalysisContext";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 import { Sidebar } from "./Sidebar";
 import { useState } from "react";
 
@@ -51,6 +52,9 @@ export function AppLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Floating FAQ assistant — reachable from every authenticated page */}
+      <ChatWidget />
     </div>
   );
 }

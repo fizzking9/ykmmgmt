@@ -50,7 +50,7 @@ async def upload_file(
 
     try:
         service = ImportService(db)
-        result = await service.run_import(tmp_path, target_table, file.filename)
+        result = await service.run_import(tmp_path, target_table, file.filename or tmp_path.name)
         return result
     except ImportError as e:
         from fastapi.responses import JSONResponse

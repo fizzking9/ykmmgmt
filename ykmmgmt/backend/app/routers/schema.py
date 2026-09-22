@@ -23,6 +23,20 @@ from app.services.raw_cleaning import RawCleanError, parse_with_profile
 router = APIRouter(prefix="/api/schema", tags=["schema"])
 
 
+def _registered_model(name: str):
+    """Look up a dynamic model, 404 instead of handing callers an Optional.
+
+    ``schema_validator.get_registered_model`` is typed Optional, which forced every
+    handler to re-narrow before touching ``__table__`` — and the ones that did not would
+    answer a request with an AttributeError (500) rather than a clean 404. The returned
+    class is built at runtime, so ``type`` is as precise as static analysis can be here.
+    """
+    model = schema_validator.get_registered_model(name)
+    if model is None:
+        raise HTTPException(status_code=404, detail=f"表 '{name}' 未注册")
+    return model
+
+
 # ── Pydantic request schemas ────────────────────────────────────────────────
 
 
@@ -87,7 +101,7 @@ def _raise_error(err: sm.SchemaManagerError) -> HTTPException:
 
 def _get_editable_model(name: str) -> Any:
     """Return the model for an editable (dynamic) table, or raise 404."""
-    model = schema_validator.get_registered_model(name)
+    model = _registered_model(name)
     if model is None or name not in sm.get_dynamic_table_names():
         raise HTTPException(status_code=404, detail=f"数据表 '{name}' 不存在或不可编辑")
     return model
@@ -313,7 +327,7 @@ async def add_column(
     except sm.SchemaManagerError as e:
         raise _raise_error(e) from e
 
-    model = schema_validator.get_registered_model(name)
+    model = _registered_model(name)
     if body.name in model.__table__.columns:
         raise HTTPException(status_code=409, detail=f"列 '{body.name}' 已存在")
 
@@ -345,7 +359,7 @@ async def drop_column(
 ):
     """Drop a column from a dynamic table via a generated migration."""
     _get_editable_model(name)
-    model = schema_validator.get_registered_model(name)
+    model = _registered_model(name)
     if column_name not in model.__table__.columns:
         raise HTTPException(status_code=404, detail=f"列 '{column_name}' 不存在")
     if column_name in ("id", "content_hash", "imported_at"):
@@ -392,7 +406,7 @@ async def modify_column(
     clear label-dependent metadata (description/default/foreign key).
     """
     _get_editable_model(name)
-    model = schema_validator.get_registered_model(name)
+    model = _registered_model(name)
     if column_name not in model.__table__.columns:
         raise HTTPException(status_code=404, detail=f"列 '{column_name}' 不存在")
     if column_name in ("id", "content_hash", "imported_at"):
@@ -453,7 +467,7 @@ async def modify_column(
         new_ondelete = None
 
     label_changed = "label" in sent and body.label is not None and body.label.strip() != old["label"]
-    new_label = body.label.strip() if label_changed else old["label"]
+    new_label = body.label.strip() if (label_changed and body.label) else old["label"]
 
     type_changed = new_type != old["type"] or (new_length or None) != (old.get("length") or None)
     nullable_changed = "nullable" in sent and body.nullable is not None and bool(body.nullable) != bool(old["nullable"])
@@ -606,7 +620,7 @@ async def update_table_settings(
     """
     _get_editable_model(name)
     sent = body.model_fields_set
-    model = schema_validator.get_registered_model(name)
+    model = _registered_model(name)
 
     new_name = name
     if "name" in sent and body.name and body.name.strip():
@@ -621,7 +635,7 @@ async def update_table_settings(
     display_changed = new_display != old_display
 
     # ── Ingestion settings resolution ──────────────────────────────
-    mapper = sa_inspect(model)
+    mapper: Any = sa_inspect(model)
     pk_cols = [c.name for c in mapper.columns if c.primary_key and c.name not in ("id",)]
     col_names = [c.name for c in mapper.columns if c.name not in ("id", "imported_at", "content_hash")]
     old_settings = sm.get_table_settings(name) or {}
@@ -759,7 +773,7 @@ async def delete_table(
     dependent tables first. Views/visualizations only require confirmation.
     """
     _get_editable_model(name)
-    model = schema_validator.get_registered_model(name)
+    model = _registered_model(name)
     dependencies = await sm.find_dependencies(db, name)
 
     if dependencies["tables"]:

@@ -48,7 +48,7 @@ def _content_hash_constraint_name(model_class: Any) -> str | None:
     for con in model_class.__table__.constraints:
         if isinstance(con, UniqueConstraint) and con.name:
             if [c.name for c in con.columns] == ["content_hash"]:
-                return con.name
+                return str(con.name)
     return None
 
 

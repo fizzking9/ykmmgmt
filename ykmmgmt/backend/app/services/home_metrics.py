@@ -322,13 +322,13 @@ async def compute_complaints(db: AsyncSession, day: dt.date, limit: int = COMPLA
     # Rows arrive newest-first, so the first row seen per status group is the
     # newest of that group.
     best: dict[Any, dict[str, Any]] = {}
-    for row in raw:
-        key = row["order_no"]
+    for record in raw:
+        key = record["order_no"]
         current = best.get(key)
         if current is None:
-            best[key] = row
-        elif current["status"] != COMPLAINT_PREFERRED_STATUS and row["status"] == COMPLAINT_PREFERRED_STATUS:
-            best[key] = row
+            best[key] = record
+        elif current["status"] != COMPLAINT_PREFERRED_STATUS and record["status"] == COMPLAINT_PREFERRED_STATUS:
+            best[key] = record
 
     rows = sorted(best.values(), key=lambda r: r["register_time"] or "", reverse=True)
     return {"total": len(rows), "rows": rows[:limit]}

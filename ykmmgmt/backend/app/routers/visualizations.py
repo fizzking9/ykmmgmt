@@ -393,7 +393,7 @@ async def _load_visualization_data(
     date_column = viz.config_json.get("date_column")
     time_active = bool(date_column) and bool(start or end or granularity or agg)
     if time_active:
-        if date_column not in columns:
+        if not date_column or date_column not in columns:
             raise HTTPException(
                 status_code=422,
                 detail=f"时间列 '{date_column}' 不在视图输出列中",
