@@ -4,6 +4,16 @@ All notable changes to YKMMgmt are documented in this file.
 
 ---
 
+## 2026-09-22
+
+- **智能问答助手:** Every page now carries a question button in the lower corner. Staff can type a business question in plain Chinese — "内部投诉还剩多少没处理？", "今天的接待和退款情况" — and get the prepared answer for it, formatted with its headings and tables intact, instead of hunting through the manual or the data browser. It understands rewording: asking the same thing in different words reaches the same answer, and several different phrasings can be pointed at one answer on purpose. When nothing it knows matches, it says so plainly and points at the closest topics rather than guessing, because a wrong answer costs more trust than no answer.
+
+- **问答内容管理:** A new 问答管理 page lets administrators maintain the question set themselves — add an entry, write its answer, attach any number of alternative phrasings, edit or retire an entry, and see at a glance which content still needs work. Choosing a different matching engine is also an administrator's decision from that page, and switching it re-processes every stored entry in one action so a half-updated question set can never quietly start answering badly.
+
+- **问错时间段不再给错答案:** The assistant used to confuse questions that differ only in their time window — asking about last week could be answered with this week's figures, because the wording otherwise matches. It now checks the period a question asks about against the period the answer actually covers, and refuses to answer rather than serving numbers from the wrong window. Several more everyday phrasings were also added to the question set, which measurably raised how many real questions get a correct answer while keeping the no-wrong-answers rule intact.
+
+- **启动与稳定性:** The assistant no longer stalls for many seconds on the first question after a restart, and a restart no longer risks hanging while it reaches out to an external service that the office network cannot see; the matching engine is now prepared while the service is starting up, and the tuned answer-quality setting is actually applied (it had been silently ignored, so the system was answering on a looser rule than intended). The codebase also gained an automatic type-checking step in its release pipeline, which cleared 46 long-standing issues across modules unrelated to this feature.
+
 ## 2026-09-15
 
 - **生产环境迁移独立主机:** The system no longer runs on the developer's own computer — it now lives on a dedicated machine on the office network (192.168.10.25), so closing a laptop or restarting a workstation no longer takes the service down. All business data was moved over intact (accounts, tables, import history), and the public address http://43.108.32.160 stays exactly the same. Staff on the office network can additionally open it directly at http://192.168.10.25:8080 without going through the internet. Releasing new versions is now a single command that delivers the update to that machine, and the automatic daily data backup continues to land in the same place as before.
