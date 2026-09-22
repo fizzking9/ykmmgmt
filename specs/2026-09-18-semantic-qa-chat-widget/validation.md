@@ -264,27 +264,41 @@ python scripts/bench_embedding_models.py --all --out-dir ../../tmp_export/bench
 
 ## Merge Checklist
 
-### Status — 2026-09-18（自动与人工验证均已完成；两项 UI 细节待确认）
+### Status — 2026-09-22（本地 + CI 干净检出均已通过；CI 暴露并修复一处编码器选型缺陷）
 
-实测证据：ruff 干净 · pytest **328 passed, 0 skipped** · eslint 干净 · `tsc -b` 干净 ·
-ChatWidget+QAManagement **7 tests / 2 files** · `npm run build` 20.4s 成功 · 真实 HTTP
-ask 往返 **33–38ms**（启动预热后）· 迁移 `b7c41d9e2f55` 已应用 · 未鉴权访问返回 401。
+实测证据：ruff 干净 · mypy 干净（62 文件） · pytest **329 passed, 0 skipped**（dev 库 + 真编码器）
+· eslint 干净 · `tsc -b` 干净 · ChatWidget+QAManagement **7 tests / 2 files** · `npm run build` 20.4s 成功
+· 真实 HTTP ask 往返 **33–38ms**（启动预热后）· 迁移 `b7c41d9e2f55` 已应用 · 未鉴权访问返回 401。
 
-已关闭的两个疑点：
+已关闭的三个疑点：
 
 1. **Gate 7 浏览器人工验证已由开发者在 2026-09-18 完成**（建问答 + 相似问法、用同义提问、
    Markdown 渲染、刷新后历史）—— 对应四项已打勾。
-   仅暗黑模式与窄屏两项不在 Gate 7 的步骤里，也未确认覆盖，暂留未勾。
+   仅暗黑模式与窄屏两项不在 Gate 7 的步骤里；开发者判定它们不属本阶段范围，已从清单移除。
 2. **Gate 8.1 的判据已改写**（原「17 条全部命中」与「精确率 ≥ 0.95」政策相互矛盾）。
    新判据：rank-1 ≥ 0.90（实测 0.900）+ 精确率 ≥ 0.95 下召回最大化（实测 0.767）+ 负例 0 误触。
    当前方法的固有局限已写在 Gate 8 里：召回上限由知识库的问法密度决定，而不是由模型决定；
    并且绝对余弦分数分辨不了时间窗口（错时段能拿 0.950），这一整类靠 `time_window.py` 守卫处理。
 
-Gate 1 中的 mypy 条款已移除：它从未接入 CI（只跑 ruff → alembic → pytest），全仓库有
-46 项旧错（均不在本功能模块），本阶段不该为它买单。本功能的 6 个文件已单独跑过 mypy 且干净；
-若要引入类型检查，应当是一项独立的技术债任务而非 Phase 17 的门（理由已记在 Gate 1 的注里）。
+3. **CI 干净检出跑过了，并且抓到一个本地跑不出来的缺陷**（2026-09-22，run 35716705385）。
+   本地 328 全绿，CI 后端 job 里 `test_pair_from_other_encoder_is_excluded_from_matching` 失败。
+   原因不是测试不稳定，而是产品规则本身有洞：`reconcile_active_model` 取库内向量的「多数派
+   戳记」当生效编码器，而 dev 库里还有 3 条 MiniLM 记录压着；CI 用**全空的新库**，只有一条被
+   改成外来戳记的记录时，它自己就是多数派 → 运行时被切到一个根本加载不了的编码器名，向量不再被
+   判为外来、直接参与匹配。生产上等价场景（库里只剩这一条 / 编码器被下架）会让所有提问全部回退。
+   修复：`model_selection.loadable_counts()` 只允许注册表（含挂载快照路径）里的编码器参与多数派
+   投票；加载不了的戳记一律按 待重建 上报。同时把 `test_stored_model_counts_...` 里的假模型名换成
+   真注册表项（否则它等于在断言这个洞），并新增 `test_unloadable_stamp_is_never_adopted_...` 守住
+   这条不变式。修复后 CI 形状（空库 + 无编码器缓存）**325 passed, 4 skipped**，dev 库
+   **329 passed, 0 skipped**；那 4 项 skip 是依赖真编码器权重的门在无缓存 runner 上的设计内 skip。
 
-剩余待办：暗黑模式 / 窄屏确认；提交并让 CI 在干净检出上跑一遍（所有一切都在本地未提交）。
+Gate 1 的 mypy 条款：早期版本把它移除了（理由是从未接入 CI、全仓库 46 项旧错与本功能无关）。
+经决定本阶段直接还债：46 项已全部清零（真实缺陷改正：循环变量复用两种类型、`Optional` 未收窄
+会把 404 变成 500、`Optional` 传进必填参数等；确实是运行时构造的 SQLAlchemy 模型代码用**行级**
+`# type: ignore[code]` 而不是整模块豁免，豁免数量可数），mypy 已写进 `.github/workflows/ci.yml`
+并在 `requirements-dev.txt` 固定版本。CI 干净检出已实际跑过该步骤并通过（ruff ✓ mypy ✓ 迁移 ✓）。
+
+剩余待办：无（暗黑模式 / 窄屏两项已由开发者判定不属本阶段范围并从清单移除）。
 
 运维提醒：每次跑后端测试集后必须执行 `tmp_export/repair_kb_after_tests.py`（重建接口会把
 全表向量刷成测试的 8 维合成向量），否则 dev 知识库全部走回退。
@@ -293,9 +307,10 @@ Gate 1 中的 mypy 条款已移除：它从未接入 CI（只跑 ruff → alembi
 
 ### 逐项
 
-- [ ] All 12 gates pass on a clean checkout —— 本机上 12 道门全绿；clean-checkout（新克隆/CI）未验证，因为本阶段尚未提交
-- [x] Backend lint and type check clean —— ruff ✓ · mypy 0 errors (62 files) ✓ · pytest 328 ✓
-- [x] Backend tests pass (embedding, chat API, admin API) —— 328 passed / 0 skipped
+- [x] All 12 gates pass on a clean checkout —— CI run 35716705385 上跑过：前端 job 全绿、MCP job 全绿、
+  后端 job 首轮暴露一处只有空库才会触发的编码器缺陷，已修复（见上第 3 点）
+- [x] Backend lint and type check clean —— ruff ✓ · mypy 0 errors (62 files) ✓ · pytest 329 ✓
+- [x] Backend tests pass (embedding, chat API, admin API) —— dev 库 329 passed / 0 skipped；CI 形状 325 passed / 4 skipped
 - [x] Frontend lint and type check clean —— eslint ✓ · `tsc -b` ✓
 - [x] Frontend tests pass (chat widget, admin page) —— 7 tests / 2 files ✓
 - [x] Database migration applies cleanly (`qa_pairs.question_variants`, `qa_pairs.embeddings`, `chat_messages.matched_variant_index` present)

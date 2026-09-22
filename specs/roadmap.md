@@ -478,6 +478,7 @@ High-level implementation order in small, shippable phases. Each phase produces 
 - [x] Encoder selection: curated registry (`app/services/embedding_models.py`) with Chinese labels + measured trade-off notes, `GET /api/chat/embedding-models` and `POST /api/chat/embedding-models/activate` (switch always rebuilds every vector), per-row `qa_pairs.embedding_model` stamp, vectors from a foreign encoder excluded from matching
 - [x] Encoder benchmark: `scripts/bench_embedding_models.py` scores MiniLM / MPNet / BGE small-base-M3 / Qwen3-0.6B / Jina v5 on rank-1, AUROC, confidence margin, recall-at-precision-floor, latency and footprint — MiniLM kept as default (see `tmp_export/embedding_model_benchmark.md`)
 - [x] Time-window guard (`app/services/time_window.py`): a match whose declared calendar period contradicts the question falls back instead of serving the neighbouring period. Needed because seeding 相似问法 made 上周/本周 questions score up to 0.95 apart to the encoder — measured precision 1.000 / recall 0.767 with the guard vs 0.500 recall for a threshold-only fix; ask log distinguishes `chat_ask_window_guard`
+- [x] Encoder-vote guard (`model_selection.loadable_counts`): only encoders present in the curated registry may win the majority vote that picks the runtime encoder, so a row stamped with a retired or hand-edited id can never make the service try to load a model that does not exist. Found by CI on a clean checkout (empty DB) where the dev database's extra rows were masking it
 
 ### Frontend: Chat Widget
 
@@ -499,13 +500,13 @@ High-level implementation order in small, shippable phases. Each phase produces 
 
 ### Validation
 
-- [x] Backend unit tests: embedding service (computation, similarity, cache, matching), admin CRUD (variant add/remove, alignment invariant, soft delete, rebuild), chat ask/sessions, encoder selection, time-window guard, tuning math — all green (328 passed, 0 skipped)
+- [x] Backend unit tests: embedding service (computation, similarity, cache, matching), admin CRUD (variant add/remove, alignment invariant, soft delete, rebuild), chat ask/sessions, encoder selection, time-window guard, tuning math — all green (329 passed, 0 skipped locally against the dev DB; 325 passed / 4 skipped in CI shape, the skips being the real-encoder gates on a cache-less runner)
 - [x] Real-model gates: threshold tuning report generated against the frozen eval set (recommended 0.79 at precision 1.00); threshold-regression guard passes with the cached encoder
 - [x] Frontend: ESLint + `tsc` clean, Vitest chat-widget + admin-page suites green, production build succeeds with the widget in the main bundle
 - [x] Manual browser E2E (create a Q&A with variants, ask paraphrases, refresh-persistence) —— 人工于 2026-09-18 完成（Markdown 渲染、同义提问命中同一答案、刷新后历史保留均已进过浏览器）
-  - Automated gates green: ruff · pytest 328 · eslint · `tsc` · Vitest · build · real HTTP ask 33–38 ms after startup warm-up.
+  - Automated gates green: ruff · mypy (0 errors, 62 files) · pytest 329 · eslint · `tsc` · Vitest · build · real HTTP ask 33–38 ms after startup warm-up.
   - Seeded 9 相似问法 (KB 5 → 14 phrasings) + shipped the time-window guard: precision 1.000 / recall **0.767** at 0.79, zero false fires. Gate 8's original "100 % of P1–P17" contradicts the precision ≥ 0.95 policy and was **reworded** to rank-1 ≥ 0.90 with recall maximised under that floor; the method's limits are recorded in Gate 8.
-  - Still open before merge: dark mode + narrow-viewport confirmation, and committing so CI can run the gates on a clean checkout.
+- [x] Merged `--no-ff` into main, branch deleted, CHANGELOG entry committed, and released to prod via `scripts/release.ps1`. CI on the clean checkout was not a formality: it caught the encoder-vote defect above, which every local run passed through.
 
 ---
 

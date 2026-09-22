@@ -220,9 +220,12 @@ async def test_dominant_model_chooses_the_majority_encoder():
 async def test_stored_model_counts_reads_per_row_encoder_stamps():
     engine = create_async_engine(settings.database_url)
     ids: list[uuid.UUID] = []
+    # Both stamps must be real registry encoders: reconcile only ever adopts a
+    # stamp it can load, so a fake id here would assert nothing about the vote.
+    minority = "BAAI/bge-base-zh-v1.5"
     try:
         async with async_sessionmaker(engine)() as session:
-            for model in ("enc-a", "enc-a", "enc-b"):
+            for model in (_SWITCH_TARGET, _SWITCH_TARGET, minority):
                 pair = QAPair(
                     question=f"多数派_{uuid.uuid4().hex[:6]}？",
                     question_variants=[],
@@ -238,17 +241,63 @@ async def test_stored_model_counts_reads_per_row_encoder_stamps():
 
         async with async_sessionmaker(engine)() as session:
             counts = await model_selection.stored_model_counts(session)
-            # reconcile 后置不变式：生效模型 = 库内多数派（无记录时保持默认）
+            # reconcile 后置不变式：生效模型 = 库内可加载戳记的多数派（无记录时保持默认）
             active = await model_selection.reconcile_active_model(session)
 
-        assert counts.get("enc-a") == 2 and counts.get("enc-b") == 1
-        assert active == (model_selection.dominant_model(counts) or settings.embedding_model_name)
+        assert counts.get(_SWITCH_TARGET) == 2 and counts.get(minority) == 1
+        expected = model_selection.dominant_model(model_selection.loadable_counts(counts))
+        assert active == (expected or settings.embedding_model_name)
     finally:
         async with async_sessionmaker(engine)() as session:
             await session.execute(delete(QAPair).where(QAPair.id.in_(ids)))
             await session.commit()
         await engine.dispose()
         embedding_service.reset_active_model()
+
+
+@pytest.mark.asyncio
+async def test_unloadable_stamp_is_never_adopted_as_the_active_encoder():
+    """A knowledge base of retired/hand-edited stamps must not hijack the encoder.
+
+    Majority-of-one is the dangerous case: with every row stamped by an id that
+    cannot be loaded, adopting the "majority" would point the runtime at a model
+    that fails to load and make every question fall back. Those rows are instead
+    reported as 待重建 while the configured encoder keeps serving.
+    """
+    assert model_selection.loadable_counts({"ghost-encoder": 9, _SWITCH_TARGET: 1}) == {_SWITCH_TARGET: 1}
+    assert model_selection.loadable_counts({}) == {}
+
+    engine = create_async_engine(settings.database_url)
+    ids: list[uuid.UUID] = []
+    try:
+        async with async_sessionmaker(engine)() as session:
+            for _ in range(3):  # an outright majority of unloadable stamps
+                pair = QAPair(
+                    question=f"无法加载_{uuid.uuid4().hex[:6]}？",
+                    question_variants=[],
+                    answer="答案",
+                    embeddings=[[0.0] * 4],
+                    embedding_model="totally-unknown-encoder",
+                    is_active=True,
+                )
+                session.add(pair)
+                await session.flush()
+                ids.append(pair.id)
+            await session.commit()
+
+        async with async_sessionmaker(engine)() as session:
+            active = await model_selection.reconcile_active_model(session)
+            needing = await model_selection.count_needing_rebuild(session)
+    finally:
+        async with async_sessionmaker(engine)() as session:
+            await session.execute(delete(QAPair).where(QAPair.id.in_(ids)))
+            await session.commit()
+        await engine.dispose()
+        embedding_service.reset_active_model()
+
+    assert active != "totally-unknown-encoder"
+    assert embedding_models.option_for(active) is not None, "reconcile adopted an unloadable encoder"
+    assert needing >= 3, "the foreign-stamped rows should be surfaced as 待重建"
 
 
 # ── Query-side instruction ──────────────────────────────────────────────────
