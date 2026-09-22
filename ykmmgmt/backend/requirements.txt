@@ -12,3 +12,7 @@ bcrypt>=3.1.0,<4.1.0
 python-jose[cryptography]>=3.3.0,<4.0.0
 pandas>=2.0.0,<3.0.0
 openpyxl>=3.1.0,<4.0.0
+# Semantic Q&A chat widget — sentence-transformers pulls in torch (heavy); it
+# is imported lazily inside the embedding service so app import/startup stay
+# torch-free and the encoder only loads when an embedding is actually computed.
+sentence-transformers>=3.0.0,<4.0.0

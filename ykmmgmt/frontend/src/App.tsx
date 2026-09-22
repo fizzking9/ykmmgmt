@@ -21,6 +21,7 @@ import SchemaCreateTablePage from "@/pages/SchemaCreateTablePage";
 import SchemaTableDetailPage from "@/pages/SchemaTableDetailPage";
 import UsersPage from "@/pages/UsersPage";
 import ProfilePage from "@/pages/ProfilePage";
+import QAManagementPage from "@/pages/QAManagementPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 
 // Route-level code-splitting for the two oversized builder pages
@@ -135,6 +136,8 @@ export default function App() {
           <Route path="/schema/tables/:name" element={<SchemaTableDetailPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          {/* 问答管理 — admin-only; the page guards access and the server 403s */}
+          <Route path="/admin/qa-pairs" element={<QAManagementPage />} />
         </Route>
 
         {/* Fallback — unknown paths get a friendly 404 */}

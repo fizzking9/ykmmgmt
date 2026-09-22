@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   LayoutDashboard,
   LogOut,
+  MessagesSquare,
   PieChart,
   Plus,
   Table2,
@@ -295,6 +296,25 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void }) {
         >
           <Users className="h-4 w-4" />
           用户管理
+        </NavLink>
+      )}
+
+      {/* 问答管理 — admin and root only (knowledge base for the chat widget) */}
+      {isAdmin && (
+        <NavLink
+          to="/admin/qa-pairs"
+          onClick={onNavClick}
+          className={() =>
+            cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted",
+              location.pathname.startsWith("/admin/qa-pairs")
+                ? "bg-muted text-primary"
+                : "text-muted-foreground",
+            )
+          }
+        >
+          <MessagesSquare className="h-4 w-4" />
+          问答管理
         </NavLink>
       )}
 

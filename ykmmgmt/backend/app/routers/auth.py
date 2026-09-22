@@ -1,5 +1,7 @@
 """Auth endpoints — login, refresh, logout, and current-user profile."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +23,7 @@ from app.services.auth import (
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-COOKIE_KWARGS = {
+COOKIE_KWARGS: dict[str, Any] = {
     "httponly": True,
     "samesite": "lax",
     "path": "/",

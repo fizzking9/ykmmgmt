@@ -12,6 +12,7 @@
 | **Data processing** | Pandas, openpyxl | CSV parsing, Excel/spreadsheet ingestion, data transformation |
 | **Validation** | Pydantic v2 | Built into FastAPI; request/response models, config management |
 | **Testing** | Pytest + httpx | Async test client for FastAPI endpoints |
+| **NLP / Embeddings** | sentence-transformers | Semantic similarity for Q&A matching (Phase 17); multilingual model for Chinese+English support |
 
 ## Frontend
 
@@ -26,6 +27,7 @@
 | **Routing** | React Router v6 | Standard SPA routing |
 | **Testing** | Vitest + React Testing Library | Vite-native, fast, component-level tests; serves as the formal validation gate for feature completion |
 | **Responsive design** | Tailwind CSS breakpoints | Mobile-first responsive utilities (`sm:`, `md:`, `lg:`, `xl:`) built into every component |
+| **Markdown rendering** | react-markdown + remark-gfm | Renders admin-authored Q&A answers (headings, GFM tables, lists) as formatted output in the chat widget (Phase 17) |
 | **WebGL / 3D** | Three.js | Particle/glow rendering for the Phase 16 welcome splash; loaded only in that lazy chunk so the main bundle is unaffected |
 
 ## Database

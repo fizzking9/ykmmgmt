@@ -1,0 +1,57 @@
+{"query": "昨日投诉分析：三源登记/处理/积压如何？", "expected": "complaint_yesterday"}
+{"query": "昨天的投诉处理情况怎么样？", "expected": "complaint_yesterday"}
+{"query": "内部投诉积压还有多少？", "expected": "complaint_yesterday"}
+{"query": "商户号、外部投诉昨天闭环情况？", "expected": "complaint_yesterday"}
+{"query": "昨日投诉登记与处理量对比", "expected": "complaint_yesterday"}
+{"query": "昨天投诉的三源结构如何？", "expected": "complaint_yesterday"}
+{"query": "投诉登记处理积压的昨日数据", "expected": "complaint_yesterday"}
+{"query": "昨日内部投诉积压情况汇报", "expected": "complaint_yesterday"}
+{"query": "昨天投诉积压还剩多少件？", "expected": "complaint_yesterday"}
+{"query": "昨日外部投诉是否已经闭环？", "expected": "complaint_yesterday"}
+{"query": "今日经营总览如何？", "expected": "biz_overview_today"}
+{"query": "今天的经营情况怎么样？", "expected": "biz_overview_today"}
+{"query": "今日接待、退款、投诉情况如何？", "expected": "biz_overview_today"}
+{"query": "今天接单退款投诉都咋样？", "expected": "biz_overview_today"}
+{"query": "看下今天的接待与退款数据", "expected": "biz_overview_today"}
+{"query": "四路分布和涉诉情况怎么样？", "expected": "biz_overview_today"}
+{"query": "A 路退款涉诉率是多少？", "expected": "biz_overview_today"}
+{"query": "今天 B 路钱包提现多少笔？", "expected": "biz_overview_today"}
+{"query": "今日经营总览与关键指标", "expected": "biz_overview_today"}
+{"query": "今天的接待量、退款金额、投诉积压汇总", "expected": "biz_overview_today"}
+{"query": "今日四路退费分布如何？", "expected": "biz_overview_today"}
+{"query": "今天 A 路的涉诉金额是多少？", "expected": "biz_overview_today"}
+{"query": "本周接待量和各专项会话设备情况怎么样？", "expected": "weekly_reception"}
+{"query": "本周总共接待了多少条？", "expected": "weekly_reception"}
+{"query": "这一周客户咨询量数据", "expected": "weekly_reception"}
+{"query": "本周接待高峰出现在几点？", "expected": "weekly_reception"}
+{"query": "本周接待量趋势如何？", "expected": "weekly_reception"}
+{"query": "这周的客户接待情况汇总", "expected": "weekly_reception"}
+{"query": "本周各时段接待量分布", "expected": "weekly_reception"}
+{"query": "一周以来接待总量是多少？", "expected": "weekly_reception"}
+{"query": "上周的投诉登记情况怎么样？", "expected": null}
+{"query": "前天投诉处理情况如何？", "expected": null}
+{"query": "上周内部投诉积压还剩多少？", "expected": null}
+{"query": "本月经营总览如何？", "expected": null}
+{"query": "下个月的经营总览", "expected": null}
+{"query": "昨天的经营情况怎么样？", "expected": null}
+{"query": "昨天的接待量是多少？", "expected": null}
+{"query": "昨天的接待高峰出现在几点？", "expected": null}
+{"query": "上周客户咨询量数据", "expected": null}
+{"query": "本月总共接待了多少条？", "expected": null}
+{"query": "今天的投诉登记情况？", "expected": null}
+{"query": "A 路上周退款涉诉率是多少？", "expected": null}
+{"query": "B 路上月钱包提现多少笔？", "expected": null}
+{"query": "昨天的四路分布和涉诉情况？", "expected": null}
+{"query": "员工本月绩效考核", "expected": null}
+{"query": "商户号投诉处理流程是怎样的？", "expected": null}
+{"query": "昨天的商户号投诉闭环情况？", "expected": null}
+{"query": "今天新增了多少投诉工单？", "expected": null}
+{"query": "本周退费的对账差异有多少？", "expected": null}
+{"query": "下周接待量预测是多少？", "expected": null}
+{"query": "今天天气怎么样？", "expected": null}
+{"query": "系统怎么登录？", "expected": null}
+{"query": "忘记密码了怎么办？", "expected": null}
+{"query": "附近有什么好吃的？", "expected": null}
+{"query": "如何联系人工客服？", "expected": null}
+{"query": "数据库怎么备份？", "expected": null}
+{"query": "怎么导出报表？", "expected": null}

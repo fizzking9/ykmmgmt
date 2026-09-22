@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import engine, get_db
 from app.core.security import get_current_user, require_admin
 from app.routers.auth import router as auth_router
+from app.routers.chat import router as chat_router
+from app.routers.chat_admin import router as chat_admin_router
 from app.routers.dashboards import router as dashboards_router
 from app.routers.device_analysis import router as device_analysis_router
 from app.routers.home import router as home_router
@@ -39,6 +41,10 @@ app.include_router(views_router, dependencies=[Depends(get_current_user)])
 app.include_router(visualizations_router, dependencies=[Depends(get_current_user)])
 app.include_router(dashboards_router, dependencies=[Depends(get_current_user)])
 app.include_router(users_router)
+# Q&A knowledge base management is admin-only (reads included)
+app.include_router(chat_admin_router, dependencies=[Depends(require_admin)])
+# Chat widget: ask + session management for any authenticated user
+app.include_router(chat_router, dependencies=[Depends(get_current_user)])
 
 # CORS — allow frontend dev server and localhost origins
 app.add_middleware(
@@ -88,6 +94,27 @@ async def restore_dynamic_tables_on_startup():
         restored = await sm.restore_dynamic_tables(conn)
     if restored:
         logger.info("Restored %d dynamic table(s) from the database", restored)
+
+
+@app.on_event("startup")
+async def warm_chat_encoder_on_startup():
+    """Load the chat encoder while booting, not under the first question.
+
+    A cold load costs ~10s (torch import plus the weights). Lazily it landed on
+    whichever user happened to ask first — and after every reload, so a developer
+    editing the backend saw a 10s stall per question. Loading here moves that cost
+    to startup, where nothing is waiting on it.
+
+    Failures are logged, never raised: the chat widget degrades to its fallback
+    answer, and the rest of the app must still boot when weights are absent.
+    """
+    from app.services import embedding_service
+
+    try:
+        dims = embedding_service.warmup()
+        logger.info("chat_encoder_warm dims=%s model=%s", dims, embedding_service.active_model_name())
+    except Exception as e:
+        logger.warning("chat_encoder_warm_failed detail=%r", e)
 
 
 @app.get("/api/health/db")

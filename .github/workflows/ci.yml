@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Backend (ruff + pytest)
+    name: Backend (ruff + mypy + pytest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -47,6 +47,9 @@ jobs:
 
       - name: Lint (ruff)
         run: ruff check .
+
+      - name: Type check (mypy)
+        run: mypy app/ --ignore-missing-imports
 
       - name: Apply migrations
         run: alembic upgrade head

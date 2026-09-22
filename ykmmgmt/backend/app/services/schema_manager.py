@@ -395,7 +395,7 @@ def validate_foreign_key(column_name: str, fk_ref: str) -> tuple[str, str]:
         or target_column.unique
         or any(
             isinstance(con, UniqueConstraint) and [c.name for c in con.columns] == [target_col]
-            for con in target_model.__table__.constraints
+            for con in target_model.__table__.constraints  # type: ignore[attr-defined]
         )
     )
     if not is_unique_target:
@@ -411,7 +411,7 @@ def find_fk_dependencies(table_name: str, column_name: str | None = None) -> lis
     for other_name, model in _DYNAMIC_TABLES.items():
         if other_name == table_name:
             continue
-        for fk in model.__table__.foreign_keys:
+        for fk in model.__table__.foreign_keys:  # type: ignore[attr-defined]
             if fk.column.table.name != table_name:
                 continue
             if column_name is not None and fk.column.name != column_name:
@@ -493,7 +493,7 @@ def build_dynamic_model(
                 primary_key=bool(col.get("primary_key")),
                 # User PK values come from the data (e.g. CSV imports) — never
                 # auto-generate them, or imports would silently lose the key
-                autoincrement=False if col.get("primary_key") else None,
+                autoincrement=False if col.get("primary_key") else None,  # type: ignore[arg-type]
                 nullable=False if col.get("primary_key") else col.get("nullable", True),
                 server_default=server_default,
                 comment=col.get("label") or col["name"],
@@ -570,7 +570,7 @@ def unregister_dynamic_table(table_name: str) -> None:
     schema_validator.remove_table_display_name(table_name)
     _TABLE_SETTINGS.pop(table_name, None)
     if model is not None:
-        Base.metadata.remove(model.__table__)
+        Base.metadata.remove(model.__table__)  # type: ignore[attr-defined]
 
 
 def extract_column_definitions(model: type) -> list[dict[str, Any]]:
@@ -579,17 +579,17 @@ def extract_column_definitions(model: type) -> list[dict[str, Any]]:
     Includes a user-defined primary key column; only the surrogate ``id``
     bookkeeping column is skipped.
     """
-    mapper = sa_inspect(model)
+    mapper: Any = sa_inspect(model)
     unique_cols = {
         next(iter(con.columns)).name
-        for con in model.__table__.constraints
+        for con in model.__table__.constraints  # type: ignore[attr-defined]
         if isinstance(con, UniqueConstraint)
         and len(con.columns) == 1
         and next(iter(con.columns)).name not in _HIDDEN_COLUMNS
     }
     fk_refs: dict[str, str] = {}
     fk_ondeletes: dict[str, str | None] = {}
-    for fk in model.__table__.foreign_keys:
+    for fk in model.__table__.foreign_keys:  # type: ignore[attr-defined]
         fk_refs[fk.parent.name] = f"{fk.column.table.name}.{fk.column.name}"
         fk_ondeletes[fk.parent.name] = fk.ondelete
     definitions: list[dict[str, Any]] = []
@@ -746,7 +746,7 @@ async def restore_dynamic_tables(conn: Any) -> int:
             # dedup enabled, which preserves their historical behavior.
             stored = stored_settings.get(name)
             if stored is not None and (stored[0] or "").strip():
-                upsert_key = [c.strip() for c in stored[0].split(",") if c.strip()]
+                upsert_key = [c.strip() for c in stored[0].split(",") if c.strip()]  # type: ignore[union-attr]
                 dedup_enabled = bool(stored[1])
             elif stored is not None:
                 upsert_key = None
@@ -765,7 +765,7 @@ async def restore_dynamic_tables(conn: Any) -> int:
             except Exception:
                 continue  # FK target not registered yet — retry next pass
             register_dynamic_table(name, display_names[name], model)
-            set_table_settings(name, model.__upsert_key__, dedup_enabled)
+            set_table_settings(name, model.__upsert_key__, dedup_enabled)  # type: ignore[attr-defined]
             del pending[name]
             restored += 1
             progressed = True
@@ -792,7 +792,7 @@ async def ensure_column_meta_table(conn: Any) -> None:
     """Create the column_meta table if it does not exist yet (idempotent)."""
 
     def _create(sync_conn) -> None:
-        ColumnMeta.__table__.create(sync_conn, checkfirst=True)
+        ColumnMeta.__table__.create(sync_conn, checkfirst=True)  # type: ignore[attr-defined]
 
     await conn.run_sync(_create)
 
@@ -874,7 +874,7 @@ async def ensure_table_meta_table(conn: Any) -> None:
     """Create the table_meta table if it does not exist yet (idempotent)."""
 
     def _create(sync_conn) -> None:
-        TableMeta.__table__.create(sync_conn, checkfirst=True)
+        TableMeta.__table__.create(sync_conn, checkfirst=True)  # type: ignore[attr-defined]
 
     await conn.run_sync(_create)
 
@@ -949,10 +949,10 @@ def _serialize_value(value: Any) -> Any:
 
 def _unique_column_names(model: type) -> set[str]:
     names: set[str] = set()
-    for col in model.__table__.columns:
+    for col in model.__table__.columns:  # type: ignore[attr-defined]
         if col.unique:
             names.add(col.name)
-    for con in model.__table__.constraints:
+    for con in model.__table__.constraints:  # type: ignore[attr-defined]
         if isinstance(con, UniqueConstraint) and len(con.columns) == 1:
             names.add(next(iter(con.columns)).name)
     return names
