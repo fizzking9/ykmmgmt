@@ -51,8 +51,14 @@ Docker Hub is unreachable from this network, so route Hub pulls (e.g.
 { "registry-mirrors": ["https://docker.m.daocloud.io"] }
 ```
 
-GHCR images (`ghcr.io/fizzking9/...`) are public and pull directly — no
-registry login needed on the host.
+GHCR images (`ghcr.io/fizzking9/...`) are public — no registry login needed on
+the host. They do **not** pull reliably from this network, though: the Hub
+mirror only covers `docker.io`, so GHCR is reached directly, where this host
+(wireless, no proxy) measured 12–109 KB/s and hit `TLS handshake timeout` part
+way through a layer. The backend image is now ~900 MB compressed (torch plus the
+baked encoder weights), so a plain `compose pull` can take hours or never
+finish — see Step 6 for `-LoadLocally`, which relays the same CI-built digests
+over the LAN instead.
 
 ```bash
 sudo systemctl enable --now docker
@@ -180,8 +186,17 @@ compose file and deploy configs to the prod host, pulls the latest images
 there, restarts the stack, and health-checks it:
 
 ```powershell
-.\scripts\deploy.ps1
+.\scripts\deploy.ps1                # the host pulls from GHCR
+.\scripts\deploy.ps1 -LoadLocally   # relay the images over the LAN instead
 ```
+
+`-LoadLocally` exists for the GHCR throughput described in Step 1: this machine
+pulls the CI images over its own (faster) link, then `docker save` → `scp` →
+`docker load` ships them over the LAN at MB/s instead of KB/s, and compose is
+started with `--pull never` so it uses exactly those digests. Either way a
+failure in the image-transfer step stops the script before the stack is
+restarted, so a stalled download cannot leave production on a half-shipped
+image; the previous images keep serving.
 
 Verify the tunnel (from the dev machine):
 

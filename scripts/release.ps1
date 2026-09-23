@@ -18,10 +18,15 @@
 #   - Requires: git, SSH key access to the prod host (srx@192.168.10.25),
 #     deploy/.env.prod configured, and the repo's GitHub visibility public
 #     (unauthenticated API calls are used to watch workflow runs).
+#   - -LoadLocally forwards to deploy.ps1: the images are still pulled from GHCR
+#     (the same digests CI published) but relayed through this machine over the
+#     LAN, for a prod host whose own link to ghcr.io is too slow for the backend
+#     image (~900MB of torch + baked encoder weights).
 
 param(
     [switch]$Yes,
     [switch]$NoPush,
+    [switch]$LoadLocally,
     [int]$TimeoutMinutes = 25
 )
 
@@ -142,7 +147,7 @@ Wait-WorkflowRun -WorkflowFile "deploy.yml" -Label "Deploy (build & push images)
 # ── Deploy to the prod host over SSH ─────────────────────────────────────────
 Write-Step "[4/5] Deploy (sync configs + pull images + restart stack on prod host)"
 
-& (Join-Path $PSScriptRoot "deploy.ps1")
+& (Join-Path $PSScriptRoot "deploy.ps1") -LoadLocally:$LoadLocally
 if ($LASTEXITCODE -ne 0) { Write-Error "deploy.ps1 failed - check the output above." }
 
 # ── Health check ────────────────────────────────────────────────────────────
