@@ -198,6 +198,31 @@ failure in the image-transfer step stops the script before the stack is
 restarted, so a stalled download cannot leave production on a half-shipped
 image; the previous images keep serving.
 
+### Rolling back
+
+Before each restart the deploy script tags whatever image the stack is running
+at that moment as `ykmmgmt-rollback-<backend|frontend|mcp>:previous`. That tag is
+the rollback point, and it exists because the step ends with `docker image prune -f`,
+which deletes the outgoing image the moment `:latest` moves — an untagged image is a
+lost image on a host that cannot re-pull it in reasonable time. One generation is
+kept (overwritten each release), so this costs about one extra copy on disk.
+
+To go back one release, on the prod host:
+
+```bash
+docker tag ykmmgmt-rollback-backend:previous ghcr.io/fizzking9/ykmmgmt-backend:latest
+cd ~/ykmmgmt && docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod \
+    up -d --pull never backend
+```
+
+(`--pull never` matters: without it `:latest` would be resolved against GHCR and
+the rollback would be undone. Same two commands with `frontend` / `mcp` for those
+services.)
+
+To confirm what is actually running, compare the container's image id with the
+tags — `docker inspect -f '{{.Image}}' ykmmgmt-prod-backend` against
+`docker images --no-trunc` — rather than trusting the tag name.
+
 Verify the tunnel (from the dev machine):
 
 ```powershell

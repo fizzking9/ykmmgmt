@@ -321,6 +321,11 @@ prod 容器内实测（不是推断）：
 
 回滚位：prod 主机上已把上一版镜像打 tag `ykmmgmt-backend:rollback-20260922` / `ykmmgmt-mcp:rollback-20260922`，
 避免 `image prune` 清掉，回滚只需改 tag 后 `up -d --pull never`。
+—— 此句当时就写错了（2026-09-23 复核）：那两个 tag 指向的是首次 LAN 下载被打断留下的
+本地残缺层镜像（561MB / 662MB 存根），真正的上一版 prod 镜像 `33689aff2e8d`（2.63GB）
+已被 `docker image prune -f` 删除——tag 指向错东西时 tag 就是个坑位而非兜底。
+现已由 `deploy.ps1` 在每次重启前自动打 `ykmmgmt-rollback-<svc>:previous`（只留一代），
+那两个存根 tag 已删除，步骤写进 `deploy/README.md` 的 Rolling back 一节。
 
 运维提醒：每次跑后端测试集后必须执行 `tmp_export/repair_kb_after_tests.py`（重建接口会把
 全表向量刷成测试的 8 维合成向量），否则 dev 知识库全部走回退。
@@ -355,6 +360,25 @@ CRUD 才会 invalidate。prod 上有人在知识库尚空时问过一次，那�
 
 修复后门禁：ruff ✓ mypy 0 errors（62 files）✓ pytest **dev 库 331 passed** /
 **CI 形状 327 passed, 4 skipped**（新增 2 项，skip 数不变）。
+
+修复上线（run 35847090532 CI 绿 · run 35847581357 镜像绿 · `release.ps1 -Yes -LoadLocally`，
+LAN 934MB/120s ≈ 8 MB/s），后端健康 3 次重试后 200，新镜像 `b833ea8d1589`。
+**不重启前提下的实地验证**（`tmp_export/probe_kb_propagation.py`，用一条临时探针问答，
+不动已播种内容）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 绕开 API 直接 SQL 插入探针问答，立刻提问 | `matched=False`（缓存尚热，符合预期） |
+| 等 75s（TTL 60s）再问 | **`matched=True` score=1.0** |
+| 绕开 API 删该行（`DELETE 1`，回到 3 条），等 75s 再问 | **`matched=False`** |
+| 收尾 | 3 个探针会话已删，列表 0 残留 |
+
+插入与删除两个方向都能自行生效，即本次修复在真实进程上成立（同场景在修复前必须重启）。
+
+**不得对 prod 跑 `scripts/load_qa_seed.py`**：`tests/data/qa_kb.jsonl` 冻结在 0/2/0 个相似
+问法，而 dev/prod 库里已是 3/5/3（共 14 种）；该脚本按 question upsert 并覆盖 variants +
+answer + embeddings，跑一次会把知识库缩回 5 种问法（用 `tmp_export/compare_seed_vs_dev.py`
+比对得出，答案文本则与种子文件逐字等长，177/152/68 字）。
 
 ### 逐项
 

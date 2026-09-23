@@ -133,6 +133,23 @@ if ($LoadLocally) {
 }
 
 Write-Step "[4/5] Restarting the stack"
+# Pin the image the stack is running *right now* before replacing it. The `docker
+# image prune -f` at the end of this step deletes untagged images, so without this
+# the previous release vanishes the moment :latest moves -- and on a host that
+# cannot pull from GHCR in reasonable time, rollback would then need a LAN round
+# trip for bytes that no longer exist anywhere on the machine. One fixed tag per
+# service, overwritten by every release, so exactly one generation is kept and
+# prune never touches it.
+ssh $RemoteHost @'
+for c in ykmmgmt-prod-backend ykmmgmt-prod-frontend ykmmgmt-prod-mcp; do
+  img=$(docker inspect -f '{{.Image}}' "$c" 2>/dev/null) || continue
+  [ -n "$img" ] || continue
+  docker tag "$img" "ykmmgmt-rollback-${c#ykmmgmt-prod-}:previous" \
+    && echo "  rollback point kept: ${c#ykmmgmt-prod-} -> $(echo "$img" | cut -c8-19)"
+done
+'@
+if ($LASTEXITCODE -ne 0) { Fail "Could not tag the rollback point - aborting before the restart, prod is untouched." }
+
 # --pull never stops compose from undoing a LAN load by re-resolving :latest
 # online. (There is no `--no-pull` on `up`; that flag only exists on `pull`.)
 $upFlags = if ($LoadLocally) { "up -d --pull never --remove-orphans" } else { "up -d --remove-orphans" }
