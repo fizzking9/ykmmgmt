@@ -300,6 +300,28 @@ Gate 1 的 mypy 条款：早期版本把它移除了（理由是从未接入 CI�
 
 剩余待办：无（暗黑模式 / 窄屏两项已由开发者判定不属本阶段范围并从清单移除）。
 
+### 上线验证 — 2026-09-23（prod 192.168.10.25）
+
+干净检出 CI 全绿（run 35729538455：ruff · mypy · alembic · pytest；前端与 MCP job 亦绿），
+镜像构建并推送成功（run 35730070181）。因 prod 主机到 ghcr.io 只有 12–109 KB/s（无线、无代理，
+daemon.json 镜像仅覆盖 docker.io），~900MB 的后端镜像改走 LAN 中转
+（`release.ps1 -LoadLocally`），启的仍是 CI 产出的同一份 digest。
+
+prod 容器内实测（不是推断）：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 运行镜像 | `33689aff2e8d`，2.63GB，2026-09-23T08:30 启动 |
+| 预置权重 | `HF_HOME=/opt/models` 共 458M，含 MiniLM 缓存目录 |
+| 启动迁移 | `a3f9c2d47b18`（chat 三表）+ `b7c41d9e2f55`（embedding_model）已应用 |
+| 启动预热 | `chat_encoder_warm dims=384 model=paraphrase-multilingual-MiniLM-L12-v2`（离线加载，未联网） |
+| 鉴权 | `/api/chat/ask` 401 · `/api/chat/qa-pairs` 401 · `/api/chat/embedding-models` 405（仅 GET） |
+| 云端健康 | `http://43.108.32.160/api/health` 200 · 首页 200 |
+| prod 知识库 | `qa_pairs` 计数 0 —— 需管理员在 问答管理 录入后问答才会命中（本阶段设计如此） |
+
+回滚位：prod 主机上已把上一版镜像打 tag `ykmmgmt-backend:rollback-20260922` / `ykmmgmt-mcp:rollback-20260922`，
+避免 `image prune` 清掉，回滚只需改 tag 后 `up -d --pull never`。
+
 运维提醒：每次跑后端测试集后必须执行 `tmp_export/repair_kb_after_tests.py`（重建接口会把
 全表向量刷成测试的 8 维合成向量），否则 dev 知识库全部走回退。
 已知内容缺口：`qa_pairs.answer` 存的是缩写摘要，比 `tmp_export/QAexample_formatted.md` 的源答案
@@ -307,8 +329,7 @@ Gate 1 的 mypy 条款：早期版本把它移除了（理由是从未接入 CI�
 
 ### 逐项
 
-- [x] All 12 gates pass on a clean checkout —— CI run 35716705385 上跑过：前端 job 全绿、MCP job 全绿、
-  后端 job 首轮暴露一处只有空库才会触发的编码器缺陷，已修复（见上第 3 点）
+- [x] All 12 gates pass on a clean checkout —— CI run 35729538455 全绿（首轮 run 35716705385 暴露一处只有空库才会触发的编码器缺陷，已修复，见上第 3 点）
 - [x] Backend lint and type check clean —— ruff ✓ · mypy 0 errors (62 files) ✓ · pytest 329 ✓
 - [x] Backend tests pass (embedding, chat API, admin API) —— dev 库 329 passed / 0 skipped；CI 形状 325 passed / 4 skipped
 - [x] Frontend lint and type check clean —— eslint ✓ · `tsc -b` ✓
