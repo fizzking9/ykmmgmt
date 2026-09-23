@@ -15,6 +15,7 @@ import logging
 import math
 import os
 import sys
+import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
@@ -195,17 +196,38 @@ class QACacheEntry:
 
 
 _qa_cache: dict[str, QACacheEntry] | None = None
+_qa_cache_warmed_at: float = 0.0
+
+# Bound here so tests can move the clock instead of patching the stdlib module.
+_clock = time.monotonic
 
 
 def get_qa_cache() -> list[QACacheEntry] | None:
-    """Return the cached entries, or ``None`` when cold/invalidated (caller warms)."""
-    return None if _qa_cache is None else list(_qa_cache.values())
+    """Cached entries, or ``None`` when the caller must reload from the DB.
+
+    Cold means three things, not one:
+      * never warmed, or dropped by :func:`invalidate_qa_cache`;
+      * warmed **empty**. An empty knowledge base must not latch, otherwise content
+        that arrives without an API write -- a SQL import, ``load_qa_seed.py``, a
+        database restore -- stays invisible to the process for its whole lifetime.
+        A seeded production host did exactly that and answered every question with
+        the fallback until it was restarted;
+      * older than ``chat_kb_cache_ttl_seconds``, which bounds how long any
+        out-of-band edit takes to reach a running worker.
+    """
+    if _qa_cache is None or not _qa_cache:
+        return None
+    ttl = settings.chat_kb_cache_ttl_seconds
+    if ttl > 0 and (_clock() - _qa_cache_warmed_at) > ttl:
+        return None
+    return list(_qa_cache.values())
 
 
 def set_qa_cache(entries: Iterable[QACacheEntry]) -> None:
-    global _qa_cache
+    global _qa_cache, _qa_cache_warmed_at
     entries = list(entries)
     _qa_cache = {e.id: e for e in entries}
+    _qa_cache_warmed_at = _clock()
 
 
 def invalidate_qa_cache() -> None:
@@ -213,8 +235,9 @@ def invalidate_qa_cache() -> None:
 
     Called after every Q&A CRUD write (create/update/delete/rebuild).
     """
-    global _qa_cache
+    global _qa_cache, _qa_cache_warmed_at
     _qa_cache = None
+    _qa_cache_warmed_at = 0.0
 
 
 # ── Matching ────────────────────────────────────────────────────────────────

@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     )
     # Width below the threshold that still counts as a "near miss" in the ask log.
     chat_log_near_threshold_window: float = 0.10
+    # How long a worker may keep serving the in-memory Q&A cache before reading the
+    # table again. Admin CRUD already drops the cache synchronously; this bound is
+    # for writes that bypass the API -- a SQL import, scripts/load_qa_seed.py, a
+    # database restore -- which would otherwise stay invisible to a running process.
+    # 0 or less disables expiry, i.e. cache lives until the next CRUD write.
+    chat_kb_cache_ttl_seconds: float = 60.0
 
     # Look in the backend dir first, then the repo root — the project keeps
     # its .env at the repo root while servers/tests run from backend/

@@ -507,6 +507,9 @@ High-level implementation order in small, shippable phases. Each phase produces 
   - Automated gates green: ruff · mypy (0 errors, 62 files) · pytest 329 · eslint · `tsc` · Vitest · build · real HTTP ask 33–38 ms after startup warm-up.
   - Seeded 9 相似问法 (KB 5 → 14 phrasings) + shipped the time-window guard: precision 1.000 / recall **0.767** at 0.79, zero false fires. Gate 8's original "100 % of P1–P17" contradicts the precision ≥ 0.95 policy and was **reworded** to rank-1 ≥ 0.90 with recall maximised under that floor; the method's limits are recorded in Gate 8.
 - [x] Merged `--no-ff` into main, branch deleted, CHANGELOG entry committed, and released to prod via `scripts/release.ps1`. CI on the clean checkout was not a formality: it caught the encoder-vote defect above, which every local run passed through.
+- [x] Seeded the prod knowledge base from dev (3 pairs / 14 phrasings, embeddings copied verbatim — md5 content digests identical on both sides, re-running the import is a no-op).
+  - The end-to-end check after seeding found a second real defect: `set_qa_cache([])` from an empty knowledge base was treated as a *valid* cache, and only admin CRUD invalidated it — so any content arriving without the API (a SQL import, `load_qa_seed.py`, a DB restore) stayed invisible to the running process indefinitely. Prod answered the fallback to all 7 probes, including questions copied character-for-character from the library (same data scores 1.0 locally); restarting only the container fixed it, which is what proved the cause.
+  - Fixed by making "cold" three conditions instead of one: never warmed / **warmed empty** / older than `chat_kb_cache_ttl_seconds` (default 60 s). Gates after the fix: ruff ✓ · mypy 0 errors (62 files) ✓ · pytest 331 on dev / 327 passed + 4 skipped in CI shape.
 
 ---
 

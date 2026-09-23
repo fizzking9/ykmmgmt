@@ -327,6 +327,35 @@ prod 容器内实测（不是推断）：
 已知内容缺口：`qa_pairs.answer` 存的是缩写摘要，比 `tmp_export/QAexample_formatted.md` 的源答案
 短得多（152/177/68 字 vs ~2600/~430/~230）——经确认本阶段不处理。
 
+### 知识库播种 prod + 缓存闭锁缺陷 — 2026-09-23（晚间）
+
+**播种**：dev 的 3 条问答 / 14 种问法原样复制进 prod（含 `embeddings` 向量本身），
+不是重新编码——两台机器跑同一份 MiniLM，逐字节相同才能保证分数与 dev 实测一致，
+不受 sentence-transformers 小版本浮点差异影响。工具：
+`tmp_export/make_prod_seed_sql.py`（生成幂等 SQL，每行 `WHERE NOT EXISTS`）+
+`tmp_export/apply_seed_prod.sh`（前后计数 + 完整性 + 指纹）。落地前先在临时库上
+迁移 + 试跑，指纹与 dev 全等才动 prod。内容指纹（md5，含向量）：
+`186226781f…`(6) · `e5b8a5a1c0…`(4) · `b1d683f4fe…`(4)，dev 与 prod 完全相同；
+重复执行只产生 `INSERT 0 0`，计数不变。
+
+**缺陷（播种后的端到端才暴露，测试全绿也看不见）**：7 次提问全部走回退，
+包括与标准问题一字不差的那几条（同一份数据本地算出的分数是 1.0）。日志
+`chat_ask result=no_candidates` 且无 `chat_kb_stale`，说明 `entries` 是空列表而不是
+向量不匹配。根因在缓存语义：`set_qa_cache([])` 写入空 dict，`get_qa_cache()` 以
+`_qa_cache is None` 判断冷/热，于是**空库也被当成有效缓存**；而缓存只有管理端
+CRUD 才会 invalidate。prod 上有人在知识库尚空时问过一次，那次问答把空缓存闭锁，
+之后经 SQL/`load_qa_seed.py` 这类绕过 API 的写入**永远读不到**，除非重启进程。
+证据：只重启容器（不改代码、不改数据）后 7/7 探针与本地预期完全一致。
+
+**修复**（`embedding_service.get_qa_cache` + 新配置 `chat_kb_cache_ttl_seconds`，默认 60s）：
+冷缓存判定从一种变三种——未预热 / **预热时为空** / 超过 TTL。前两条治本次事故，
+第三条把任何绕过 API 的改动收敛到一分钟以内，代价是每 worker 每分钟多一条
+`SELECT`。补 3 项测试：空预热不闭锁、过期转冷（并断言未过期时不提前失效）、
+写答案后缓存确实被丢弃（原先那行 `set_qa_cache([])` 只是摆设，没有任何断言）。
+
+修复后门禁：ruff ✓ mypy 0 errors（62 files）✓ pytest **dev 库 331 passed** /
+**CI 形状 327 passed, 4 skipped**（新增 2 项，skip 数不变）。
+
 ### 逐项
 
 - [x] All 12 gates pass on a clean checkout —— CI run 35729538455 全绿（首轮 run 35716705385 暴露一处只有空库才会触发的编码器缺陷，已修复，见上第 3 点）

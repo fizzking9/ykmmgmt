@@ -100,6 +100,31 @@ def test_set_provider_invalidates_cache():
     assert es.get_qa_cache() is None
 
 
+def test_warming_an_empty_kb_does_not_latch():
+    """A cache warmed while the table was empty must count as cold.
+
+    Otherwise rows that arrive without an API write -- a SQL import, load_qa_seed.py,
+    a database restore -- stay invisible to the process forever. Production served the
+    fallback answer to every question after being seeded this way.
+    """
+    es.set_qa_cache([])
+    assert es.get_qa_cache() is None, "空缓存被当成有效，外部写入再也读不到"
+
+
+def test_cache_goes_cold_after_the_ttl(monkeypatch):
+    """Out-of-band edits must reach a running worker within the configured bound."""
+    e = es.QACacheEntry(id="x", question="q", category=None, embeddings=[[1.0]])
+    es.set_qa_cache([e])
+    assert es.get_qa_cache() is not None
+    ttl = es.settings.chat_kb_cache_ttl_seconds
+    assert ttl > 0, "测试假设默认开启了过期"
+    warmed = es._qa_cache_warmed_at
+    monkeypatch.setattr(es, "_clock", lambda: warmed + ttl + 1)
+    assert es.get_qa_cache() is None
+    monkeypatch.setattr(es, "_clock", lambda: warmed + ttl / 2)
+    assert es.get_qa_cache() is not None, "未过期就重读数据库了"
+
+
 # ── matching ──────────────────────────────────────────────────────────────
 
 

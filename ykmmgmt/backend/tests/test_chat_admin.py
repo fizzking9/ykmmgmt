@@ -159,13 +159,24 @@ async def test_update_recomputes_on_variant_change():
 
 @pytest.mark.asyncio
 async def test_update_answer_only_keeps_embeddings():
-    embedding_service.set_qa_cache([])  # warm so we can assert it is dropped
     async with _client() as client:
         data = await _create(client, question_variants=["v1"])
+        # Warm the cache *after* the create (which drops it) so the write's
+        # invalidation is what this asserts on. An empty cache can no longer stand in
+        # for a warm one -- see embedding_service.get_qa_cache.
+        embedding_service.set_qa_cache(
+            [
+                embedding_service.QACacheEntry(
+                    id="warm-probe", question="q", category=None, embeddings=[[1.0]]
+                )
+            ]
+        )
+        assert embedding_service.get_qa_cache() is not None
         resp = await client.put(f"/api/chat/qa-pairs/{data['id']}", json={"answer": "新答案"})
         assert resp.status_code == 200
         assert resp.json()["answer"] == "新答案"
         assert await _embeddings_len(data["id"]) == 2
+        assert embedding_service.get_qa_cache() is None, "写答案后必须丢弃缓存"
 
 
 @pytest.mark.asyncio

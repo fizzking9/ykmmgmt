@@ -4,6 +4,14 @@ All notable changes to YKMMgmt are documented in this file.
 
 ---
 
+## 2026-09-23
+
+- **智能问答内容上线:** 线上助手现在拥有与开发环境相同的三条问答内容（含全部十四种问法），因此同一个问题在两边得到的回答一致。内容按管理员在 问答管理 里维护的样子原样搬运，未作改写。
+
+- **智能问答修复:** 不经页面、直接用脚本或数据库导入的方式补充问答内容后，线上助手会对所有提问回复"没有找到匹配的答案"——哪怕问题与库里写的一字不差——直到服务被重启。原因是助手第一次读到空知识库时就把"空"记住了，之后不再重查。现在这类内容一分钟内即被读到，导入问答或恢复数据库都不再需要重启服务。
+
+---
+
 ## 2026-09-22
 
 - **智能问答助手:** Every page now carries a question button in the lower corner. Staff can type a business question in plain Chinese — "内部投诉还剩多少没处理？", "今天的接待和退款情况" — and get the prepared answer for it, formatted with its headings and tables intact, instead of hunting through the manual or the data browser. It understands rewording: asking the same thing in different words reaches the same answer, and several different phrasings can be pointed at one answer on purpose. When nothing it knows matches, it says so plainly and points at the closest topics rather than guessing, because a wrong answer costs more trust than no answer.
